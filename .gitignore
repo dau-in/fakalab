@@ -1,0 +1,21 @@
+# build tooling (once the Vite app is scaffolded)
+node_modules/
+dist/
+dist-ssr/
+.vercel/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# raw pack archives — kept locally for provenance, too large/binary to version usefully
+presets-source/_archives/
+
+# Valve's own extracted game files (not community mod content) — kept locally for
+# documentation/reference only, never distributed
+presets-source/vanilla-original/
+
+*.log
+
+# agent/planning context — stays local always, never versioned
+CLAUDE.md
