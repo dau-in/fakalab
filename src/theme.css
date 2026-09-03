@@ -1,0 +1,509 @@
+/*
+ * Themes and layout.
+ *
+ * cs16.css drives every component from fourteen custom properties on :root,
+ * so a theme is just a different set of those. The library's own values are
+ * the Counter-Strike palette, which becomes the optional third theme; the
+ * modern light and dark palettes override them.
+ */
+
+/* --- Modern dark, the default ------------------------------------------ */
+:root,
+:root[data-theme="dark"] {
+  --bg: #1b201c;
+  --secondary-bg: #131614;
+
+  --accent: #e8a13c;
+  --secondary-accent: #b87d24;
+
+  --text: #e9ece7;
+  --secondary-text: #cfd4cd;
+  --text-3: #98a298;
+
+  --border-light: #3c463e;
+  --border-dark: #0b0e0c;
+
+  --disabled-text: #5a635b;
+  --disabled-text-shadow: transparent;
+
+  --outline: #000;
+  --slider: #e8a13c;
+  --slider-bg: #0f1210;
+
+  --scrollbar-track: #232a25;
+
+  /* Ours, for surfaces cs16.css does not name. */
+  --stage: #0c0e0c;
+  --button-text: #f2f4f0;
+  color-scheme: dark;
+}
+
+/* --- Modern light ------------------------------------------------------- */
+:root[data-theme="light"] {
+  --bg: #e7e3d9;
+  --secondary-bg: #f6f4ee;
+
+  --accent: #a96c15;
+  --secondary-accent: #7d4f0f;
+
+  --text: #1e211c;
+  --secondary-text: #3a3f37;
+  --text-3: #6d7368;
+
+  --border-light: #ffffff;
+  --border-dark: #a49f92;
+
+  --disabled-text: #a49f92;
+  --disabled-text-shadow: #fff;
+
+  --outline: #55594f;
+  --slider: #a96c15;
+  --slider-bg: #cfcabb;
+
+  --scrollbar-track: #d5d0c2;
+
+  --stage: #171a15;
+  --button-text: #1e211c;
+  color-scheme: light;
+}
+
+/* --- Counter-Strike 1.6, the library's own palette ---------------------- */
+:root[data-theme="cs16"] {
+  --bg: #4a5942;
+  --secondary-bg: #3e4637;
+
+  --accent: #c4b550;
+  --secondary-accent: #958831;
+
+  --text: #dedfd6;
+  --secondary-text: #d8ded3;
+  --text-3: #a0aa95;
+
+  --border-light: #8c9284;
+  --border-dark: #292c21;
+
+  --disabled-text: #292c21;
+  --disabled-text-shadow: #75806f;
+
+  --outline: #000;
+  --slider: #7f8c7f;
+  --slider-bg: #1f1f1f;
+
+  --scrollbar-track: #5a6a50;
+
+  --stage: #0b0d09;
+  --button-text: #fff;
+  color-scheme: dark;
+}
+
+/*
+ * cs16.css reads `--secondary--text` in a couple of places, with a doubled
+ * dash. That property does not exist upstream, so those rules silently
+ * inherit. Mirroring it keeps them on-theme without patching the library.
+ */
+:root {
+  --secondary--text: var(--secondary-text);
+}
+
+/* cs16.css hardcodes white button text, which disappears on a light ground. */
+.cs-btn {
+  color: var(--button-text);
+}
+
+/*
+ * The library's tick mark is an inline SVG with the Counter-Strike yellow
+ * baked into it, so it barely shows on the light theme. Drawing the checked
+ * state instead of loading it keeps it on-theme everywhere.
+ */
+.cs-checkbox input:checked + .cs-checkbox__label::before {
+  background-image: none;
+  background-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--secondary-bg);
+}
+
+.cs-checkbox__label {
+  color: var(--secondary-text);
+}
+.cs-checkbox__label:hover {
+  color: var(--text);
+}
+
+.cs-slider,
+.cs-slider input {
+  width: 100%;
+}
+
+/* --- Layout ------------------------------------------------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--secondary-bg);
+  color: var(--text);
+  font-family: ArialPixel, "Segoe UI", system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.app {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Raised and inset bevels, the pattern the library uses for every surface. */
+.raised {
+  border: 1px solid;
+  border-color: var(--border-light) var(--border-dark) var(--border-dark)
+    var(--border-light);
+}
+
+.inset {
+  border: 1px solid;
+  border-color: var(--border-dark) var(--border-light) var(--border-light)
+    var(--border-dark);
+}
+
+/* --- Top bar ------------------------------------------------------------ */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-dark);
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.wordmark b {
+  color: var(--accent);
+  font-weight: inherit;
+}
+.wordmark svg {
+  color: var(--accent);
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.group-label {
+  color: var(--text-3);
+  font-size: 0.8125rem;
+}
+
+/* A pressed cs16 button reads as the active option. */
+.cs-btn[aria-pressed="true"] {
+  border-color: var(--border-dark) var(--border-light) var(--border-light)
+    var(--border-dark);
+  color: var(--accent);
+}
+
+.cs-btn.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* --- Body --------------------------------------------------------------- */
+.body {
+  display: grid;
+  grid-template-columns: 168px 1fr 292px;
+  min-height: 0;
+}
+
+.rail {
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--secondary-bg);
+  border-right: 1px solid var(--border-dark);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 2px 4px 6px;
+  color: var(--text-3);
+  font-size: 0.8125rem;
+}
+
+.knife {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--secondary-text);
+  font: inherit;
+  cursor: pointer;
+}
+.knife:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+.knife[aria-pressed="true"] {
+  background: var(--bg);
+  color: var(--accent);
+  border-color: var(--border-dark) var(--border-light) var(--border-light)
+    var(--border-dark);
+}
+.knife svg {
+  color: currentColor;
+}
+
+/* --- Stage -------------------------------------------------------------- */
+.stage {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--stage);
+}
+
+.viewport {
+  position: relative;
+  min-height: 0;
+}
+.viewport canvas {
+  display: block;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.overlay.error {
+  color: #e8705c;
+}
+
+.readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border-dark);
+  font-size: 0.8125rem;
+  color: var(--text-3);
+}
+.readout span {
+  padding: 5px 11px;
+  border-right: 1px solid var(--border-dark);
+  white-space: nowrap;
+}
+.readout span:last-child {
+  border-right: 0;
+}
+.readout .spacer {
+  flex: 1;
+  padding: 0;
+  border-right: 0;
+}
+.readout b {
+  color: var(--secondary-text);
+  font-weight: inherit;
+}
+.readout .hi b {
+  color: var(--accent);
+}
+
+/* --- Panel -------------------------------------------------------------- */
+.panel {
+  overflow-y: auto;
+  background: var(--secondary-bg);
+  border-left: 1px solid var(--border-dark);
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 0;
+}
+.panel-tabs .cs-btn {
+  flex: 1;
+}
+
+.panel-body {
+  padding: 10px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.section > h2 {
+  margin: 0 0 8px;
+  font-size: 0.8125rem;
+  font-weight: normal;
+  color: var(--text-3);
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.preset {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  color: var(--secondary-text);
+  background: var(--bg);
+  cursor: pointer;
+}
+.preset:hover {
+  color: var(--text);
+}
+.preset[aria-pressed="true"] {
+  color: var(--accent);
+}
+.preset .chip {
+  height: 18px;
+  border: 1px solid var(--border-dark);
+}
+
+.ramp {
+  height: 26px;
+  margin-bottom: 6px;
+}
+
+.stops {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.stop {
+  display: grid;
+  gap: 4px;
+  justify-items: stretch;
+  font-size: 0.75rem;
+  color: var(--text-3);
+  text-align: center;
+}
+.stop input {
+  width: 100%;
+  height: 24px;
+  padding: 1px;
+  background: var(--secondary-bg);
+  border: 1px solid;
+  border-color: var(--border-dark) var(--border-light) var(--border-light)
+    var(--border-dark);
+  cursor: pointer;
+}
+
+.field {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.field:last-child {
+  margin-bottom: 0;
+}
+.field .label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--secondary-text);
+  font-size: 0.875rem;
+}
+.field .label b {
+  color: var(--text-3);
+  font-weight: inherit;
+}
+
+/* --- Bottom bar --------------------------------------------------------- */
+.bottombar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-top: 1px solid var(--border-light);
+  flex-wrap: wrap;
+}
+
+.bottombar .spacer {
+  flex: 1;
+}
+
+.export-note {
+  color: var(--text-3);
+  font-size: 0.8125rem;
+  text-align: right;
+}
+
+.cs-btn.primary {
+  color: var(--accent);
+  padding: 7px 16px;
+}
+
+:focus-visible {
+  outline: 1px dotted var(--outline);
+  outline-offset: 1px;
+}
+
+@media (max-width: 940px) {
+  .app {
+    height: auto;
+    overflow: visible;
+  }
+  .body {
+    grid-template-columns: 1fr;
+  }
+  .rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-dark);
+  }
+  .rail-title {
+    width: 100%;
+  }
+  .viewport {
+    min-height: 60vh;
+  }
+  .panel {
+    border-left: 0;
+    border-top: 1px solid var(--border-dark);
+  }
+}

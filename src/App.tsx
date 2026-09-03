@@ -4,18 +4,38 @@ import { KNIVES, modelUrl } from "./data/knives";
 import { DEFAULT_PRESET, PRESETS, toStops } from "./data/presets";
 import { idleSequence } from "./mdl/animation";
 import { knifeTextures, parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
-import { buildRecoloredFile, measureBrightness, recolorTextures, type Adjust } from "./mdl/recolor";
-import { decodeToRgba, readPalette, readPixels } from "./mdl/texture";
+import { buildRecoloredFile, recolorTextures, type Adjust } from "./mdl/recolor";
+import { DEFAULT_LIGHTING, type Lighting } from "./three/goldsrcMaterial";
 import { Viewport } from "./three/Viewport";
-import { TexturePreview } from "./ui/TexturePreview";
+import {
+  CrosshairIcon,
+  DownloadIcon,
+  EyeIcon,
+  KnifeIcon,
+  MoonIcon,
+  OrbitIcon,
+  PaletteIcon,
+  PauseIcon,
+  PlayIcon,
+  SceneIcon,
+  SoundIcon,
+  SunIcon,
+} from "./ui/icons";
+import { useTheme, type Theme } from "./ui/useTheme";
 
-const STOP_LABELS = ["Shadow", "Mid", "Light", "Highlight"];
+const STOP_LABELS = ["Shadow", "Mid", "Light", "Peak"];
 
-function formatBytes(bytes: number): string {
-  return `${bytes.toLocaleString("en-US")} B`;
-}
+const THEME_BUTTONS: Array<{ id: Theme; label: string; Icon: typeof SunIcon }> = [
+  { id: "light", label: "Light", Icon: SunIcon },
+  { id: "dark", label: "Dark", Icon: MoonIcon },
+  { id: "cs16", label: "CS 1.6", Icon: CrosshairIcon },
+];
+
+type Tab = "knife" | "scene";
 
 export default function App() {
+  const [theme, setTheme] = useTheme();
+
   const [slug, setSlug] = useState(KNIVES[9].slug); // Karambit
   const [model, setModel] = useState<MdlFile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +44,13 @@ export default function App() {
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id);
   const [colors, setColors] = useState<string[]>([...DEFAULT_PRESET.colors]);
   const [adjust, setAdjust] = useState<Adjust>({ brightness: 0, contrast: 0 });
+
   const [free, setFree] = useState(false);
   const [playing, setPlaying] = useState(true);
+  const [tab, setTab] = useState<Tab>("knife");
+  const [withSounds, setWithSounds] = useState(true);
+  const [ambient, setAmbient] = useState(DEFAULT_LIGHTING.ambient);
+  const [shade, setShade] = useState(DEFAULT_LIGHTING.shade);
 
   const downloadUrl = useRef<string | null>(null);
 
@@ -40,8 +65,7 @@ export default function App() {
         return response.arrayBuffer();
       })
       .then((buffer) => {
-        if (cancelled) return;
-        setModel(parseMdl(buffer));
+        if (!cancelled) setModel(parseMdl(buffer));
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
@@ -65,19 +89,13 @@ export default function App() {
     [model, targets, stops, adjust],
   );
 
-  /** Decoded pixels for the first knife texture, before and after. */
-  const preview = useMemo(() => {
-    if (!model || targets.length === 0 || recolored.length === 0) return null;
-    const texture = targets[0];
-    const pixels = readPixels(model, texture);
-    const original = readPalette(model, texture);
-    return {
-      texture,
-      range: measureBrightness(original, pixels),
-      before: decodeToRgba(pixels, original),
-      after: decodeToRgba(pixels, recolored[0].palette),
-    };
-  }, [model, targets, recolored]);
+  const lighting = useMemo<Lighting>(
+    () => ({ ...DEFAULT_LIGHTING, ambient, shade }),
+    [ambient, shade],
+  );
+
+  const sequence = useMemo(() => (model ? idleSequence(model) : null), [model]);
+  const sounds = useMemo(() => (model ? soundEvents(model) : []), [model]);
 
   const applyPreset = useCallback((id: string) => {
     const preset = PRESETS.find((candidate) => candidate.id === id);
@@ -112,192 +130,310 @@ export default function App() {
     [],
   );
 
-  const sounds = useMemo(() => (model ? soundEvents(model) : []), [model]);
-  const sequence = useMemo(() => (model ? idleSequence(model) : null), [model]);
+  const knifeName = KNIVES.find((knife) => knife.slug === slug)?.name ?? slug;
 
   return (
     <div className="app">
       <header className="topbar">
         <span className="wordmark">
+          <KnifeIcon size={18} />
           Faka<b>Lab</b>
         </span>
-        <span className="stage-note">stage 4 — animated preview</span>
 
-        <div className="spacer" />
+        <span className="spacer" />
 
-        <div className="seg">
-          <button type="button" aria-pressed={!free} onClick={() => setFree(false)}>
-            Game view
+        <div className="group">
+          <span className="group-label">Theme</span>
+          {THEME_BUTTONS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              className="cs-btn icon-btn"
+              aria-pressed={theme === id}
+              onClick={() => setTheme(id)}
+            >
+              <Icon />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="group">
+          <span className="group-label">View</span>
+          <button
+            type="button"
+            className="cs-btn icon-btn"
+            aria-pressed={!free}
+            onClick={() => setFree(false)}
+          >
+            <EyeIcon />
+            In game
           </button>
-          <button type="button" aria-pressed={free} onClick={() => setFree(true)}>
-            Free view
+          <button
+            type="button"
+            className="cs-btn icon-btn"
+            aria-pressed={free}
+            onClick={() => setFree(true)}
+          >
+            <OrbitIcon />
+            Free
+          </button>
+          <button
+            type="button"
+            className="cs-btn icon-btn"
+            onClick={() => setPlaying((value) => !value)}
+          >
+            {playing ? <PauseIcon /> : <PlayIcon />}
+            {playing ? "Pause" : "Play"}
           </button>
         </div>
-        <button type="button" className="ghost" onClick={() => setPlaying((value) => !value)}>
-          {playing ? "Pause" : "Play"}
-        </button>
       </header>
 
       <div className="body">
         <nav className="rail" aria-label="Knives">
+          <div className="rail-title">
+            <span>Knife</span>
+            <span>{KNIVES.length}</span>
+          </div>
           {KNIVES.map((knife) => (
             <button
-              type="button"
               key={knife.slug}
+              type="button"
               className="knife"
               aria-pressed={knife.slug === slug}
               onClick={() => setSlug(knife.slug)}
             >
-              {knife.name}
+              <KnifeIcon />
+              <span>{knife.name}</span>
             </button>
           ))}
         </nav>
 
         <main className="stage">
           <div className="viewport">
-            <Viewport model={model} recolored={recolored} free={free} playing={playing} />
-            {loading && <p className="overlay">Loading {slug}…</p>}
+            <Viewport
+              model={model}
+              recolored={recolored}
+              lighting={lighting}
+              free={free}
+              playing={playing}
+            />
+            {loading && <p className="overlay">Loading {knifeName}…</p>}
             {error && <p className="overlay error">{error}</p>}
           </div>
 
-          <div className="under">
-            {preview && (
-              <div className="pair">
-                <figure>
-                  <figcaption>Original</figcaption>
-                  <TexturePreview
-                    width={preview.texture.width}
-                    height={preview.texture.height}
-                    rgba={preview.before}
-                  />
-                </figure>
-                <figure>
-                  <figcaption>Recolored</figcaption>
-                  <TexturePreview
-                    width={preview.texture.width}
-                    height={preview.texture.height}
-                    rgba={preview.after}
-                  />
-                </figure>
-              </div>
-            )}
-
-            <dl className="facts">
-              <div>
-                <dt>Texture</dt>
-                <dd>
-                  {preview ? `${preview.texture.width}×${preview.texture.height}` : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>Brightness band</dt>
-                <dd>
-                  {preview ? `${preview.range.low.toFixed(2)} – ${preview.range.high.toFixed(2)}` : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>Animation</dt>
-                <dd>
-                  {sequence ? `${sequence.label} · ${sequence.numFrames} f · ${sequence.fps} fps` : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>File</dt>
-                <dd>{model ? formatBytes(model.header.length) : "—"}</dd>
-              </div>
-              <div>
-                <dt>Rewritten</dt>
-                <dd>{formatBytes(recolored.length * 768)}</dd>
-              </div>
-              <div>
-                <dt>Sounds</dt>
-                <dd>{sounds.length}</dd>
-              </div>
-            </dl>
+          <div className="readout">
+            <span>
+              <b>v_knife.mdl</b>
+            </span>
+            <span>
+              size <b>{model ? model.header.length.toLocaleString("en-US") : "—"} B</b>
+            </span>
+            <span className="hi">
+              rewritten <b>{recolored.length * 768} B</b>
+            </span>
+            <span>structure unchanged</span>
+            <span className="spacer" />
+            <span>
+              {sequence
+                ? `${sequence.label} · ${sequence.numFrames} f · ${sequence.fps.toFixed(0)} fps`
+                : "—"}
+            </span>
           </div>
         </main>
 
-        <aside className="panel">
-          <section>
-            <h2>Presets</h2>
-            <div className="presets">
-              {PRESETS.map((preset) => (
-                <button
-                  type="button"
-                  key={preset.id}
-                  className="preset"
-                  aria-pressed={preset.id === presetId}
-                  onClick={() => applyPreset(preset.id)}
-                >
-                  <span
-                    className="swatch"
-                    style={{ background: `linear-gradient(135deg, ${preset.colors.join(",")})` }}
-                  />
-                  {preset.name}
-                </button>
-              ))}
+        <aside className="panel" aria-label="Customization">
+          <div className="panel-tabs">
+            <button
+              type="button"
+              className="cs-btn icon-btn"
+              aria-pressed={tab === "knife"}
+              onClick={() => setTab("knife")}
+            >
+              <PaletteIcon />
+              Knife
+            </button>
+            <button
+              type="button"
+              className="cs-btn icon-btn"
+              aria-pressed={tab === "scene"}
+              onClick={() => setTab("scene")}
+            >
+              <SceneIcon />
+              Scene
+            </button>
+          </div>
+
+          {tab === "knife" ? (
+            <div className="panel-body">
+              <section className="section">
+                <h2>Finishes</h2>
+                <div className="presets">
+                  {PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className="preset raised"
+                      aria-pressed={preset.id === presetId}
+                      onClick={() => applyPreset(preset.id)}
+                    >
+                      <span
+                        className="chip"
+                        style={{
+                          background: `linear-gradient(150deg, ${preset.colors.join(",")})`,
+                        }}
+                      />
+                      <span>{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="section">
+                <h2>Ramp · shadow to light</h2>
+                <div
+                  className="ramp inset"
+                  style={{ background: `linear-gradient(90deg, ${colors.join(",")})` }}
+                />
+                <div className="stops">
+                  {colors.map((color, index) => (
+                    <label key={STOP_LABELS[index]} className="stop">
+                      <span>{STOP_LABELS[index]}</span>
+                      <input
+                        type="color"
+                        value={color}
+                        onChange={(event) => setStopColor(index, event.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <section className="section">
+                <h2>Adjust</h2>
+                <div className="field">
+                  <span className="label">
+                    Brightness <b>{adjust.brightness.toFixed(2)}</b>
+                  </span>
+                  <div className="cs-slider">
+                    <input
+                      type="range"
+                      min={-0.5}
+                      max={0.5}
+                      step={0.01}
+                      value={adjust.brightness}
+                      onChange={(event) =>
+                        setAdjust((previous) => ({
+                          ...previous,
+                          brightness: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="field">
+                  <span className="label">
+                    Contrast <b>{adjust.contrast.toFixed(2)}</b>
+                  </span>
+                  <div className="cs-slider">
+                    <input
+                      type="range"
+                      min={-1}
+                      max={1}
+                      step={0.02}
+                      value={adjust.contrast}
+                      onChange={(event) =>
+                        setAdjust((previous) => ({
+                          ...previous,
+                          contrast: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </section>
             </div>
-          </section>
+          ) : (
+            <div className="panel-body">
+              <section className="section">
+                <h2>Map light</h2>
+                <p className="group-label" style={{ margin: "0 0 10px" }}>
+                  The engine reads these from the map where you stand, so they change
+                  from spot to spot.
+                </p>
+                <div className="field">
+                  <span className="label">
+                    Ambient <b>{ambient}</b>
+                  </span>
+                  <div className="cs-slider">
+                    <input
+                      type="range"
+                      min={0}
+                      max={160}
+                      step={1}
+                      value={ambient}
+                      onChange={(event) => setAmbient(Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="field">
+                  <span className="label">
+                    Shade <b>{shade}</b>
+                  </span>
+                  <div className="cs-slider">
+                    <input
+                      type="range"
+                      min={0}
+                      max={255 - ambient}
+                      step={1}
+                      value={Math.min(shade, 255 - ambient)}
+                      onChange={(event) => setShade(Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+              </section>
 
-          <section>
-            <h2>Ramp</h2>
-            <div
-              className="ramp"
-              style={{ background: `linear-gradient(90deg, ${colors.join(",")})` }}
-            />
-            <div className="stops">
-              {colors.map((color, index) => (
-                <label key={STOP_LABELS[index]} className="stop">
-                  <span>{STOP_LABELS[index]}</span>
-                  <input
-                    type="color"
-                    value={color}
-                    onChange={(event) => setStopColor(index, event.target.value)}
-                  />
-                </label>
-              ))}
+              <section className="section">
+                <h2>Sounds</h2>
+                <p className="group-label" style={{ margin: 0 }}>
+                  This knife asks the engine for {sounds.length}{" "}
+                  {sounds.length === 1 ? "sound" : "sounds"}, listed inside the model
+                  itself. They install to their own folder and never replace the
+                  original CS 1.6 knife sounds.
+                </p>
+              </section>
             </div>
-          </section>
-
-          <section>
-            <h2>Adjust</h2>
-            <label className="slider">
-              <span>
-                Brightness <b>{adjust.brightness.toFixed(2)}</b>
-              </span>
-              <input
-                type="range"
-                min={-0.5}
-                max={0.5}
-                step={0.01}
-                value={adjust.brightness}
-                onChange={(event) =>
-                  setAdjust((previous) => ({ ...previous, brightness: +event.target.value }))
-                }
-              />
-            </label>
-            <label className="slider">
-              <span>
-                Contrast <b>{adjust.contrast.toFixed(2)}</b>
-              </span>
-              <input
-                type="range"
-                min={-1}
-                max={1}
-                step={0.02}
-                value={adjust.contrast}
-                onChange={(event) =>
-                  setAdjust((previous) => ({ ...previous, contrast: +event.target.value }))
-                }
-              />
-            </label>
-          </section>
-
-          <button type="button" className="download" onClick={download} disabled={!preview}>
-            Download v_knife.mdl
-          </button>
+          )}
         </aside>
       </div>
+
+      <footer className="bottombar">
+        <div className="cs-checkbox">
+          <input
+            id="with-sounds"
+            type="checkbox"
+            checked={withSounds}
+            onChange={(event) => setWithSounds(event.target.checked)}
+          />
+          <label className="cs-checkbox__label" htmlFor="with-sounds">
+            Include sounds
+          </label>
+        </div>
+        <button type="button" className="cs-btn icon-btn">
+          <SoundIcon />
+          Preview
+        </button>
+
+        <span className="spacer" />
+
+        <span className="export-note">
+          {knifeName.toLowerCase()} · {presetId === "custom" ? "custom" : presetId}
+        </span>
+        <button type="button" className="cs-btn icon-btn primary" onClick={download} disabled={!model}>
+          <DownloadIcon />
+          Download v_knife.mdl
+        </button>
+      </footer>
     </div>
   );
 }

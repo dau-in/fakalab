@@ -50,6 +50,10 @@ The knife models are made by the CS 1.6 modding community. They are not our work
 
 If you are an author here and want something removed, open an issue.
 
+The interface is built on [cs16.css](https://github.com/ekmas/cs16.css) by ekmas
+(MIT), vendored under `src/vendor/` along with its ArialPixel font so the app stays
+self-contained.
+
 ## License
 
 The source code is [AGPL-3.0](LICENSE). The knife models keep their authors' terms.
