@@ -1,0 +1,7 @@
+# Normalize line endings for text files; never touch binary game assets.
+* text=auto
+
+*.mdl binary
+*.wav binary
+*.rar binary
+*.zip binary
