@@ -20,25 +20,24 @@ import { decodeToRgba, readPalette, readPixels } from "../src/mdl/texture";
 import { PRESETS, toStops } from "../src/data/presets";
 import { buildPalette } from "../src/mdl/recolor";
 import { isHandTexture } from "../src/mdl/parse";
+import { DEFAULT_GAMMA, textureGammaTable } from "../src/mdl/gamma";
+import { applyLightGamma, studioIllum } from "../src/mdl/lighting";
 
 const PANEL = 420;
 
-// R_StudioLighting: ambient plus a shade term bent by SHADE_LAMBERT.
-const SHADE_LAMBERT = 1.495;
-const AMBIENT = 40;
-const SHADE = 170;
-const LIGHT: [number, number, number] = [0.3, 0.5, -0.8];
-const LIGHT_LENGTH = Math.hypot(LIGHT[0], LIGHT[1], LIGHT[2]);
+const AMBIENT = 40 / 255;
+const SHADE = 170 / 255;
+const RAW_LIGHT: [number, number, number] = [0.3, 0.5, -0.8];
+const LENGTH = Math.hypot(...RAW_LIGHT);
+const LIGHT = RAW_LIGHT.map((v) => v / LENGTH) as [number, number, number];
+
+/** Set FAKALAB_NO_GAMMA=1 to see the raw output the engine never shows. */
+const useGamma = process.env.FAKALAB_NO_GAMMA !== "1";
+const gammaTable = textureGammaTable(DEFAULT_GAMMA);
 
 function studioLighting(nx: number, ny: number, nz: number): number {
-  let lightcos = (nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]) / LIGHT_LENGTH;
-  if (lightcos > 1) lightcos = 1;
-
-  let illum = AMBIENT + SHADE;
-  lightcos = (lightcos + (SHADE_LAMBERT - 1)) / SHADE_LAMBERT;
-  if (lightcos > 0) illum -= SHADE * lightcos;
-
-  return Math.min(255, Math.max(0, illum)) / 255;
+  const illum = studioIllum(nx, ny, nz, LIGHT, AMBIENT, SHADE);
+  return useGamma ? applyLightGamma(illum, DEFAULT_GAMMA) : Math.min(1, Math.max(0, illum));
 }
 
 const [, , slug = "karambit-knife", label = "idle", presetId = "none", ...frameArgs] = process.argv;
@@ -65,7 +64,7 @@ for (const mesh of geometry.meshes) {
       ? buildPalette(readPalette(model, mesh.texture), pixels, toStops(preset.colors))
       : readPalette(model, mesh.texture);
   decoded.set(mesh.texture.name, {
-    rgba: decodeToRgba(pixels, palette),
+    rgba: decodeToRgba(pixels, palette, undefined, useGamma ? gammaTable : undefined),
     width: mesh.texture.width,
     height: mesh.texture.height,
   });
@@ -190,7 +189,8 @@ ihdr.writeUInt32BE(PANEL, 4);
 ihdr[8] = 8;
 ihdr[9] = 2;
 
-const out = join(process.cwd(), "node_modules", ".tmp", `pose-${slug}.png`);
+const suffix = useGamma ? "" : "-nogamma";
+const out = join(process.cwd(), "node_modules", ".tmp", `pose-${slug}${suffix}.png`);
 writeFileSync(
   out,
   Buffer.concat([
@@ -202,7 +202,10 @@ writeFileSync(
 );
 
 const triangles = geometry.meshes.reduce((sum, mesh) => sum + mesh.triangleCount, 0);
-console.log(`${slug} · ${sequence.label} · ${sequence.numFrames} frames @ ${sequence.fps} fps · preset ${preset?.name ?? "none"}`);
+console.log(
+  `${slug} · ${sequence.label} · ${sequence.numFrames} frames @ ${sequence.fps} fps · ` +
+    `preset ${preset?.name ?? "none"} · gamma ${useGamma ? "engine" : "off"}`,
+);
 console.log(`${geometry.meshes.length} meshes, ${triangles} triangles`);
 console.log(`frames rendered: ${frames.join(", ")}`);
 console.log(out);

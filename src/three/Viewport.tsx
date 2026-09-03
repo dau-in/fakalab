@@ -8,7 +8,14 @@ import { buildGeometry, poseInto } from "../mdl/geometry";
 import { isHandTexture, type MdlFile } from "../mdl/parse";
 import { decodeToRgba, readPalette, readPixels } from "../mdl/texture";
 import type { RecoloredTexture } from "../mdl/recolor";
-import { createMaterial, createTexture, DEFAULT_LIGHTING, type Lighting } from "./goldsrcMaterial";
+import { textureGammaTable } from "../mdl/gamma";
+import {
+  applyLighting,
+  createMaterial,
+  createTexture,
+  DEFAULT_LIGHTING,
+  type Lighting,
+} from "./goldsrcMaterial";
 
 /**
  * GoldSrc is Z-up with X forward and Y to the left. This maps that onto
@@ -34,6 +41,7 @@ function Knife({ model, recolored, lighting, playing }: KnifeProps) {
 
   const geometry = useMemo(() => buildGeometry(model), [model]);
   const sequence = useMemo(() => idleSequence(model), [model]);
+  const gammaTable = useMemo(() => textureGammaTable(lighting.gamma), [lighting.gamma]);
 
   // One geometry and one material per mesh, rebuilt only when the model does.
   const built = useMemo(() => {
@@ -43,14 +51,19 @@ function Knife({ model, recolored, lighting, playing }: KnifeProps) {
       buffer.setAttribute("normal", new BufferAttribute(new Float32Array(mesh.normals), 3));
       buffer.setAttribute("uv", new BufferAttribute(mesh.uvs, 2));
 
-      const rgba = decodeToRgba(readPixels(model, mesh.texture), readPalette(model, mesh.texture));
+      const rgba = decodeToRgba(
+        readPixels(model, mesh.texture),
+        readPalette(model, mesh.texture),
+        undefined,
+        gammaTable,
+      );
       const data = new Uint8Array(rgba.buffer.slice(0));
       const texture = createTexture(data, mesh.texture.width, mesh.texture.height);
       return { mesh, buffer, texture, data, material: createMaterial(texture, lighting) };
       // Lighting is applied through uniforms below, so it is not a dependency.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     });
-  }, [geometry, model]);
+  }, [geometry, model, gammaTable]);
 
   useEffect(() => {
     return () => {
@@ -70,18 +83,19 @@ function Knife({ model, recolored, lighting, playing }: KnifeProps) {
       if (!replacement && isHandTexture(item.mesh.texture)) continue;
 
       const palette = replacement ? replacement.palette : readPalette(model, item.mesh.texture);
-      const rgba = decodeToRgba(readPixels(model, item.mesh.texture), palette);
+      const rgba = decodeToRgba(
+        readPixels(model, item.mesh.texture),
+        palette,
+        undefined,
+        gammaTable,
+      );
       item.data.set(new Uint8Array(rgba.buffer));
       item.texture.needsUpdate = true;
     }
-  }, [built, recolored, model]);
+  }, [built, recolored, model, gammaTable]);
 
   useEffect(() => {
-    for (const item of built) {
-      item.material.uniforms.uAmbient.value = lighting.ambient;
-      item.material.uniforms.uShade.value = lighting.shade;
-      item.material.uniforms.uLightVec.value.set(...lighting.direction).normalize();
-    }
+    for (const item of built) applyLighting(item.material, lighting);
   }, [built, lighting]);
 
   useFrame((_, delta) => {
