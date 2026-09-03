@@ -2,14 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KNIVES, modelUrl } from "./data/knives";
 import { DEFAULT_PRESET, PRESETS, toStops } from "./data/presets";
+import { idleSequence } from "./mdl/animation";
 import { knifeTextures, parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
-import {
-  buildRecoloredFile,
-  measureBrightness,
-  recolorTextures,
-  type Adjust,
-} from "./mdl/recolor";
+import { buildRecoloredFile, measureBrightness, recolorTextures, type Adjust } from "./mdl/recolor";
 import { decodeToRgba, readPalette, readPixels } from "./mdl/texture";
+import { Viewport } from "./three/Viewport";
 import { TexturePreview } from "./ui/TexturePreview";
 
 const STOP_LABELS = ["Shadow", "Mid", "Light", "Highlight"];
@@ -27,6 +24,8 @@ export default function App() {
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id);
   const [colors, setColors] = useState<string[]>([...DEFAULT_PRESET.colors]);
   const [adjust, setAdjust] = useState<Adjust>({ brightness: 0, contrast: 0 });
+  const [free, setFree] = useState(false);
+  const [playing, setPlaying] = useState(true);
 
   const downloadUrl = useRef<string | null>(null);
 
@@ -66,7 +65,7 @@ export default function App() {
     [model, targets, stops, adjust],
   );
 
-  /** Original and recolored pixels for the first knife texture. */
+  /** Decoded pixels for the first knife texture, before and after. */
   const preview = useMemo(() => {
     if (!model || targets.length === 0 || recolored.length === 0) return null;
     const texture = targets[0];
@@ -114,6 +113,7 @@ export default function App() {
   );
 
   const sounds = useMemo(() => (model ? soundEvents(model) : []), [model]);
+  const sequence = useMemo(() => (model ? idleSequence(model) : null), [model]);
 
   return (
     <div className="app">
@@ -121,7 +121,21 @@ export default function App() {
         <span className="wordmark">
           Faka<b>Lab</b>
         </span>
-        <span className="stage-note">stage 2 — recoloring engine, flat preview</span>
+        <span className="stage-note">stage 4 — animated preview</span>
+
+        <div className="spacer" />
+
+        <div className="seg">
+          <button type="button" aria-pressed={!free} onClick={() => setFree(false)}>
+            Game view
+          </button>
+          <button type="button" aria-pressed={free} onClick={() => setFree(true)}>
+            Free view
+          </button>
+        </div>
+        <button type="button" className="ghost" onClick={() => setPlaying((value) => !value)}>
+          {playing ? "Pause" : "Play"}
+        </button>
       </header>
 
       <div className="body">
@@ -140,11 +154,14 @@ export default function App() {
         </nav>
 
         <main className="stage">
-          {loading && <p className="status">Loading {slug}…</p>}
-          {error && <p className="status error">{error}</p>}
+          <div className="viewport">
+            <Viewport model={model} recolored={recolored} free={free} playing={playing} />
+            {loading && <p className="overlay">Loading {slug}…</p>}
+            {error && <p className="overlay error">{error}</p>}
+          </div>
 
-          {preview && !loading && !error && (
-            <>
+          <div className="under">
+            {preview && (
               <div className="pair">
                 <figure>
                   <figcaption>Original</figcaption>
@@ -163,39 +180,41 @@ export default function App() {
                   />
                 </figure>
               </div>
+            )}
 
-              <dl className="facts">
-                <div>
-                  <dt>Texture</dt>
-                  <dd>
-                    {preview.texture.name} · {preview.texture.width}×{preview.texture.height}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Brightness band</dt>
-                  <dd>
-                    {preview.range.low.toFixed(2)} – {preview.range.high.toFixed(2)}
-                  </dd>
-                </div>
-                <div>
-                  <dt>File</dt>
-                  <dd>{model ? formatBytes(model.header.length) : "—"}</dd>
-                </div>
-                <div>
-                  <dt>Rewritten</dt>
-                  <dd>{formatBytes(recolored.length * 768)}</dd>
-                </div>
-                <div>
-                  <dt>Bones</dt>
-                  <dd>{model?.header.numBones}</dd>
-                </div>
-                <div>
-                  <dt>Sounds</dt>
-                  <dd>{sounds.length}</dd>
-                </div>
-              </dl>
-            </>
-          )}
+            <dl className="facts">
+              <div>
+                <dt>Texture</dt>
+                <dd>
+                  {preview ? `${preview.texture.width}×${preview.texture.height}` : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>Brightness band</dt>
+                <dd>
+                  {preview ? `${preview.range.low.toFixed(2)} – ${preview.range.high.toFixed(2)}` : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>Animation</dt>
+                <dd>
+                  {sequence ? `${sequence.label} · ${sequence.numFrames} f · ${sequence.fps} fps` : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>File</dt>
+                <dd>{model ? formatBytes(model.header.length) : "—"}</dd>
+              </div>
+              <div>
+                <dt>Rewritten</dt>
+                <dd>{formatBytes(recolored.length * 768)}</dd>
+              </div>
+              <div>
+                <dt>Sounds</dt>
+                <dd>{sounds.length}</dd>
+              </div>
+            </dl>
+          </div>
         </main>
 
         <aside className="panel">
