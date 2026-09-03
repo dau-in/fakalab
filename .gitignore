@@ -19,3 +19,10 @@ models-source/vanilla-original/
 
 # agent/planning context — stays local always, never versioned
 CLAUDE.md
+
+# built app
+dist/
+node_modules/
+
+# synced from models-source at build time
+public/models/
