@@ -20,7 +20,9 @@ import { KNIVES } from "../src/data/knives";
 import { PRESETS, toStops } from "../src/data/presets";
 import { buildBundle } from "../src/export";
 import { knifeTextures, parseMdl, soundEvents } from "../src/mdl/parse";
-import { recolorTextures } from "../src/mdl/recolor";
+import { recolorPixelsOf, recolorTextures, type Look } from "../src/mdl/recolor";
+import { REGION_BLADE, REGION_HANDLE } from "../src/mdl/regions";
+import { readMaskFile } from "./lib/read-mask";
 import { loadModel } from "./lib/software-render";
 
 const publicDir = join(process.cwd(), "public");
@@ -106,6 +108,59 @@ if (plain.blob.size !== plainModel.header.length) {
   fail(`plain export is ${plain.blob.size} bytes, model is ${plainModel.header.length}`);
 }
 console.log(`\nwithout sounds: ${plain.filename}, ${plain.blob.size} bytes`);
+
+// The pixel path rewrites a quarter of a million indices as well as the palette.
+// Both replace equal-length runs, so the file must not change size by a byte.
+console.log("\npixel path: blade and handle coloured apart, with a pattern\n");
+console.log("knife".padEnd(24) + "source".padStart(10) + "export".padStart(10) + "  parses");
+
+for (const knife of KNIVES) {
+  const model = loadModel(join(publicDir, "models", `${knife.slug}.mdl`));
+  const mask = readMaskFile(join(publicDir, "regions", `${knife.slug}.png`));
+  const look: Look = {
+    ramps: {
+      [REGION_HANDLE]: toStops(["#1a0d05", "#5c3110", "#a3641f", "#e8b872"]),
+      [REGION_BLADE]: toStops(preset.colors),
+    },
+    adjust: { brightness: 0, contrast: 0 },
+    patternId: "marble",
+    patternStrength: 0.7,
+  };
+
+  const recolored = knifeTextures(model).map((texture) =>
+    recolorPixelsOf(model, texture, mask, look),
+  );
+  const bundle = await buildBundle({
+    model,
+    recolored,
+    knifeName: knife.name,
+    presetName: "Marble",
+  });
+
+  const bytes = new Uint8Array(await bundle.blob.arrayBuffer());
+  if (bytes.length !== model.header.length) {
+    fail(`${knife.slug}: pixel path changed size, ${model.header.length} -> ${bytes.length}`);
+  }
+
+  let parses = "yes";
+  try {
+    const reparsed = parseMdl(bytes.buffer.slice(0) as ArrayBuffer);
+    if (reparsed.header.numBones !== model.header.numBones) fail(`${knife.slug}: bones changed`);
+    if (knifeTextures(reparsed).length !== knifeTextures(model).length) {
+      fail(`${knife.slug}: texture count changed`);
+    }
+  } catch (cause) {
+    parses = "NO";
+    fail(`${knife.slug}: pixel-path output does not parse - ${(cause as Error).message}`);
+  }
+
+  console.log(
+    knife.slug.padEnd(24) +
+      String(model.header.length).padStart(10) +
+      String(bytes.length).padStart(10) +
+      `  ${parses}`,
+  );
+}
 
 console.log(failures === 0 ? "\nAll checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

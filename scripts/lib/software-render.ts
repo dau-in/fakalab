@@ -37,6 +37,8 @@ export interface RenderOptions {
   height: number;
   /** Optional recolor applied to the knife textures only. */
   ramp?: RampStop[];
+  /** Pre-built replacements, keyed by texture name, for the pixel path. */
+  replace?: Map<string, { palette: Uint8Array; pixels?: Uint8Array }>;
   /** RGB pixels drawn where the model is not, e.g. a real screenshot. */
   background?: Uint8Array;
   /** Draw only the meshes whose texture passes this test. */
@@ -79,12 +81,14 @@ export function render(options: RenderOptions): RenderResult {
   const textures = new Map<string, { rgba: Uint8ClampedArray; width: number; height: number }>();
   for (const mesh of geometry.meshes) {
     if (textures.has(mesh.texture.name)) continue;
-    const pixels = readPixels(model, mesh.texture);
+    const swap = options.replace?.get(mesh.texture.name);
+    const pixels = swap?.pixels ?? readPixels(model, mesh.texture);
     const source = readPalette(model, mesh.texture);
     const palette =
-      options.ramp && !isHandTexture(mesh.texture)
+      swap?.palette ??
+      (options.ramp && !isHandTexture(mesh.texture)
         ? buildPalette(source, pixels, options.ramp)
-        : source;
+        : source);
     textures.set(mesh.texture.name, {
       rgba: decodeToRgba(pixels, palette, undefined, gammaTable),
       width: mesh.texture.width,

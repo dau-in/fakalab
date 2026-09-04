@@ -1,15 +1,32 @@
 /**
  * The recoloring engine.
  *
- * A preset is a color ramp running from shadow to highlight. Each palette
- * entry keeps its original brightness and receives the ramp color that matches
- * it, so the model's own baked shading decides where every color lands. Only
- * the 768-byte palette changes: pixel indices, file size and every internal
- * offset stay exactly as they were.
+ * A preset is a color ramp running from shadow to highlight. Each pixel keeps
+ * its original brightness and receives the ramp color that matches it, so the
+ * model's own baked shading decides where every color lands.
+ *
+ * There are two ways to apply that, and which one runs depends on what is
+ * being asked for:
+ *
+ *   palette  One ramp for the whole knife. Only the 768-byte palette is
+ *            rewritten; pixel indices are untouched. Exact, and fast enough to
+ *            run on every frame of a slider drag.
+ *
+ *   pixels   Different colours per part, or any pattern. A palette entry is
+ *            shared across the whole texture, so as soon as colour depends on
+ *            *where* a pixel is rather than only on how bright it was, the
+ *            indices have to be rewritten too, and the result quantized back
+ *            down to 256 colours.
+ *
+ * Both edit in place. The pixel array and the palette are the same size before
+ * and after, so the file's length and every offset inside it are unchanged.
  */
 
 import { PALETTE_BYTES, type MdlFile, type MdlTexture } from "./parse";
 import { PALETTE_ENTRIES, paletteHistogram, paletteOffset, readPalette, readPixels } from "./texture";
+import { patternById, type Pattern } from "./patterns";
+import { quantize } from "./quantize";
+import { REGION_NONE, type RegionMask } from "./regions";
 
 export type Rgb = [number, number, number];
 
@@ -158,6 +175,27 @@ export function buildPalette(
 export interface RecoloredTexture {
   texture: MdlTexture;
   palette: Uint8Array;
+  /** Rewritten indices, present only when the pixel path ran. */
+  pixels?: Uint8Array;
+}
+
+/** Everything that decides what a knife ends up looking like. */
+export interface Look {
+  /** One ramp per region id. A single entry means the whole knife. */
+  ramps: Record<number, RampStop[]>;
+  adjust: Adjust;
+  patternId: string;
+  /** How far the pattern shifts the ramp lookup, 0 to 1. */
+  patternStrength: number;
+}
+
+/** Whether a look needs the slower path that rewrites pixel indices. */
+export function needsPixelPath(look: Look, mask: RegionMask | null): boolean {
+  if (look.patternId !== "none" && look.patternStrength > 0) return true;
+  if (!mask || mask.present.length < 2) return false;
+
+  const ramps = mask.present.map((id) => JSON.stringify(look.ramps[id] ?? null));
+  return ramps.some((ramp) => ramp !== ramps[0]);
 }
 
 /** Applies a preset to every knife texture, leaving the hand textures alone. */
@@ -175,16 +213,120 @@ export function recolorTextures(
 
 /**
  * Produces the exportable file: a copy of the original bytes with the new
- * palettes written over the old ones. Nothing else moves, so the result is as
- * loadable as what went in.
+ * palettes, and where the pixel path ran, the new indices, written over the old
+ * ones. Both are the same length as what they replace, so nothing else moves
+ * and the result is as loadable as what went in.
  */
 export function buildRecoloredFile(
   model: MdlFile,
   recolored: RecoloredTexture[],
 ): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(model.buffer.slice(0));
-  for (const { texture, palette } of recolored) {
+  for (const { texture, palette, pixels } of recolored) {
+    if (pixels) out.set(pixels, texture.index);
     out.set(palette, paletteOffset(texture));
   }
   return out;
+}
+
+/**
+ * The brightness band of one region, measured over only its own texels so a
+ * dark handle and a bright blade each use the full width of their ramp.
+ */
+function regionBand(
+  palette: Uint8Array,
+  pixels: Uint8Array,
+  mask: RegionMask | null,
+  regionId: number,
+): BrightnessRange {
+  if (!mask) return measureBrightness(palette, pixels);
+
+  const counts = new Uint32Array(PALETTE_ENTRIES);
+  let any = false;
+  for (let i = 0; i < pixels.length; i += 1) {
+    if (mask.region[i] !== regionId) continue;
+    counts[pixels[i]] += 1;
+    any = true;
+  }
+  if (!any) return measureBrightness(palette, pixels);
+
+  // measureBrightness works from a histogram of pixels, so hand it one built
+  // from this region alone.
+  const slice: number[] = [];
+  for (let entry = 0; entry < PALETTE_ENTRIES; entry += 1) {
+    if (counts[entry] > 0) slice.push(entry);
+  }
+  const synthetic = new Uint8Array(slice.reduce((sum, entry) => sum + counts[entry], 0));
+  let at = 0;
+  for (const entry of slice) {
+    synthetic.fill(entry, at, at + counts[entry]);
+    at += counts[entry];
+  }
+  return measureBrightness(palette, synthetic);
+}
+
+/**
+ * The pixel path: colour per region, optional pattern, then back down to 256
+ * colours. Returns new indices alongside the new palette.
+ */
+export function recolorPixelsOf(
+  model: MdlFile,
+  texture: MdlTexture,
+  mask: RegionMask | null,
+  look: Look,
+): RecoloredTexture {
+  const source = readPalette(model, texture);
+  const pixels = readPixels(model, texture);
+  const { width, height } = texture;
+
+  const pattern: Pattern = patternById(look.patternId);
+  const shift = look.patternId === "none" ? 0 : look.patternStrength;
+
+  const bands = new Map<number, BrightnessRange>();
+  const rampFor = new Map<number, RampStop[]>();
+  const ids = mask && mask.present.length > 0 ? mask.present : [REGION_NONE];
+  for (const id of ids) {
+    bands.set(id, regionBand(source, pixels, mask, id));
+    rampFor.set(id, look.ramps[id] ?? look.ramps[ids[0]] ?? []);
+  }
+
+  const curve = Math.pow(2, -look.adjust.contrast);
+  const gain = 1 + look.adjust.brightness;
+  const rgb = new Uint8Array(width * height * 3);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const slot = y * width + x;
+      const entry = pixels[slot];
+      const value = brightnessOf(source, entry);
+
+      const id = mask ? mask.region[slot] : REGION_NONE;
+      if (mask && id === REGION_NONE) continue; // unused atlas space stays black
+
+      const band = bands.get(id) ?? bands.get(ids[0])!;
+      const stops = rampFor.get(id) ?? rampFor.get(ids[0])!;
+
+      let t = Math.pow(clamp01((value - band.low) / (band.high - band.low)), curve);
+      if (shift > 0) {
+        const field = pattern.field({
+          x,
+          y,
+          width,
+          height,
+          along: mask ? mask.along[slot] / 255 : 0.5,
+        });
+        // Centred so the pattern pushes both ways instead of only brightening.
+        t = clamp01(t + (field - 0.5) * shift * 2);
+      }
+
+      const color = sampleRamp(stops, t);
+      const guard = clamp01(value / DEAD_SPACE_CUTOFF) * gain;
+      for (let c = 0; c < 3; c += 1) {
+        rgb[slot * 3 + c] = Math.min(255, Math.round(color[c] * guard));
+      }
+    }
+  }
+
+  const quantized = quantize(rgb, width, height);
+  return { texture, palette: quantized.palette, pixels: quantized.pixels };
 }

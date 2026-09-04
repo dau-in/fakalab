@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import logo from "./assets/karambit.svg";
 import { KNIVES, modelUrl, thumbnailUrl } from "./data/knives";
-import { DEFAULT_PRESET, PRESETS, toStops } from "./data/presets";
+import { DEFAULT_PRESET, PRESETS } from "./data/presets";
 import { fetchSound, previewSound, soundUrl } from "./data/sounds";
 import { buildBundle } from "./export";
 import { idleSequence } from "./mdl/animation";
-import { knifeTextures, parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
-import { recolorTextures, type Adjust } from "./mdl/recolor";
+import { parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
+import { toStops as rampFrom } from "./data/presets";
+import { PATTERNS } from "./mdl/patterns";
+import { loadRegionMask, REGIONS, type RegionMask } from "./mdl/regions";
+import type { Adjust, Look } from "./mdl/recolor";
+import { useRecolor } from "./ui/useRecolor";
 import { DEFAULT_LIGHTING, type Lighting } from "./three/goldsrcMaterial";
 import { Viewport } from "./three/Viewport";
 import {
@@ -36,6 +40,16 @@ const THEME_BUTTONS: Array<{ id: Theme; label: string; Icon: typeof SunIcon }> =
 
 type Tab = "knife" | "scene";
 
+/** Editing scope: the whole knife, or one region of it. */
+const SCOPE_ALL = 0;
+
+/** Every region starts on the same preset, so a knife opens looking coherent. */
+function rampsFor(colors: string[]): Record<number, string[]> {
+  const out: Record<number, string[]> = { [SCOPE_ALL]: [...colors] };
+  for (const region of REGIONS) out[region.id] = [...colors];
+  return out;
+}
+
 export default function App() {
   const [theme, setTheme] = useTheme();
 
@@ -45,8 +59,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id);
-  const [colors, setColors] = useState<string[]>([...DEFAULT_PRESET.colors]);
+  const [ramps, setRamps] = useState(() => rampsFor(DEFAULT_PRESET.colors));
+  const [scope, setScope] = useState<number>(SCOPE_ALL);
   const [adjust, setAdjust] = useState<Adjust>({ brightness: 0, contrast: 0 });
+  const [patternId, setPatternId] = useState("none");
+  const [patternStrength, setPatternStrength] = useState(0.8);
+  const [mask, setMask] = useState<RegionMask | null>(null);
 
   const [free, setFree] = useState(false);
   const [playing, setPlaying] = useState(true);
@@ -86,13 +104,45 @@ export default function App() {
     };
   }, [slug]);
 
-  const targets = useMemo(() => (model ? knifeTextures(model) : []), [model]);
-  const stops = useMemo(() => toStops(colors), [colors]);
+  // The region mask is per model, so it travels with it.
+  useEffect(() => {
+    let cancelled = false;
+    setMask(null);
+    loadRegionMask(slug)
+      .then((loaded) => {
+        if (!cancelled) setMask(loaded);
+      })
+      .catch(() => {
+        // Without a mask the knife is simply treated as one region.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
-  const recolored = useMemo(
-    () => (model && targets.length > 0 ? recolorTextures(model, targets, stops, adjust) : []),
-    [model, targets, stops, adjust],
+  /** Which regions this knife actually has; a couple are one region throughout. */
+  const regions = useMemo(
+    () => REGIONS.filter((region) => mask?.present.includes(region.id)),
+    [mask],
   );
+
+  const look = useMemo<Look>(
+    () => ({
+      ramps: Object.fromEntries(
+        Object.entries(ramps).map(([id, colors]) => [Number(id), rampFrom(colors)]),
+      ),
+      adjust,
+      patternId,
+      patternStrength,
+    }),
+    [ramps, adjust, patternId, patternStrength],
+  );
+
+  const { textures: recolored, working, perPixel } = useRecolor(model, mask, look);
+
+  /** The ramp the editor is showing, which follows the scope. */
+  const editing = scope === SCOPE_ALL ? (regions[0]?.id ?? SCOPE_ALL) : scope;
+  const colors = ramps[editing] ?? ramps[SCOPE_ALL];
 
   const lighting = useMemo<Lighting>(
     () => ({ ...DEFAULT_LIGHTING, ambient, shade }),
@@ -104,17 +154,37 @@ export default function App() {
 
   const knifeName = KNIVES.find((knife) => knife.slug === slug)?.name ?? slug;
 
-  const applyPreset = useCallback((id: string) => {
-    const preset = PRESETS.find((candidate) => candidate.id === id);
-    if (!preset) return;
-    setPresetId(preset.id);
-    setColors([...preset.colors]);
-  }, []);
+  /** Whole-knife edits write every region, so parts never drift apart. */
+  const writeRamp = useCallback(
+    (update: (colors: string[]) => string[]) => {
+      setRamps((previous) => {
+        const next = { ...previous };
+        const keys =
+          scope === SCOPE_ALL ? Object.keys(previous).map(Number) : [scope];
+        for (const key of keys) next[key] = update(previous[key] ?? previous[SCOPE_ALL]);
+        return next;
+      });
+    },
+    [scope],
+  );
 
-  const setStopColor = useCallback((index: number, value: string) => {
-    setPresetId("custom");
-    setColors((previous) => previous.map((color, i) => (i === index ? value : color)));
-  }, []);
+  const applyPreset = useCallback(
+    (id: string) => {
+      const preset = PRESETS.find((candidate) => candidate.id === id);
+      if (!preset) return;
+      if (scope === SCOPE_ALL) setPresetId(preset.id);
+      writeRamp(() => [...preset.colors]);
+    },
+    [scope, writeRamp],
+  );
+
+  const setStopColor = useCallback(
+    (index: number, value: string) => {
+      setPresetId("custom");
+      writeRamp((colors) => colors.map((color, i) => (i === index ? value : color)));
+    },
+    [writeRamp],
+  );
 
   const presetName =
     PRESETS.find((preset) => preset.id === presetId)?.name ?? "Custom";
@@ -253,6 +323,7 @@ export default function App() {
             />
             {loading && <p className="overlay">Loading {knifeName}…</p>}
             {error && <p className="overlay error">{error}</p>}
+            {working && !loading && !error && <p className="overlay busy">Redrawing…</p>}
           </div>
 
           <div className="readout">
@@ -263,8 +334,14 @@ export default function App() {
               size <b>{model ? model.header.length.toLocaleString("en-US") : "—"} B</b>
             </span>
             <span className="hi">
-              rewritten <b>{recolored.length * 768} B</b>
+              rewritten{" "}
+              <b>
+                {perPixel
+                  ? `${recolored.reduce((sum, t) => sum + 768 + (t.pixels?.length ?? 0), 0).toLocaleString("en-US")} B`
+                  : `${recolored.length * 768} B`}
+              </b>
             </span>
+            <span>{perPixel ? "palette and pixels" : "palette only"}</span>
             <span>structure unchanged</span>
             <span className="spacer" />
             <span>
@@ -299,6 +376,33 @@ export default function App() {
 
           {tab === "knife" ? (
             <div className="panel-body">
+              {regions.length > 1 && (
+                <section className="section">
+                  <h2>Colouring</h2>
+                  <div className="scope">
+                    <button
+                      type="button"
+                      className="cs-btn"
+                      aria-pressed={scope === SCOPE_ALL}
+                      onClick={() => setScope(SCOPE_ALL)}
+                    >
+                      Whole knife
+                    </button>
+                    {regions.map((region) => (
+                      <button
+                        key={region.id}
+                        type="button"
+                        className="cs-btn"
+                        aria-pressed={scope === region.id}
+                        onClick={() => setScope(region.id)}
+                      >
+                        {region.name}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               <section className="section">
                 <h2>Finishes</h2>
                 <div className="presets">
@@ -323,7 +427,12 @@ export default function App() {
               </section>
 
               <section className="section">
-                <h2>Ramp · shadow to light</h2>
+                <h2>
+                  Ramp · shadow to light
+                  {scope !== SCOPE_ALL && regions.length > 1
+                    ? ` · ${regions.find((region) => region.id === scope)?.name.toLowerCase()}`
+                    : ""}
+                </h2>
                 <div
                   className="ramp inset"
                   style={{ background: `linear-gradient(90deg, ${colors.join(",")})` }}
@@ -340,6 +449,47 @@ export default function App() {
                     </label>
                   ))}
                 </div>
+              </section>
+
+              <section className="section">
+                <h2>Pattern</h2>
+                <div className="patterns">
+                  {PATTERNS.map((pattern) => (
+                    <button
+                      key={pattern.id}
+                      type="button"
+                      className="cs-btn"
+                      aria-pressed={pattern.id === patternId}
+                      onClick={() => {
+                        setPatternId(pattern.id);
+                        if (pattern.id !== "none") setPatternStrength(pattern.strength);
+                      }}
+                    >
+                      {pattern.name}
+                    </button>
+                  ))}
+                </div>
+                {patternId !== "none" && (
+                  <div className="field" style={{ marginTop: 10 }}>
+                    <span className="label">
+                      Amount <b>{patternStrength.toFixed(2)}</b>
+                    </span>
+                    <div className="cs-slider">
+                      <input
+                        type="range"
+                        min={0.05}
+                        max={1}
+                        step={0.05}
+                        value={patternStrength}
+                        onChange={(event) => setPatternStrength(Number(event.target.value))}
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="note" style={{ marginTop: 8 }}>
+                  A pattern moves each pixel along the ramp, so it picks up the
+                  ramp's colours rather than needing its own.
+                </p>
               </section>
 
               <section className="section">

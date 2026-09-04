@@ -35,6 +35,12 @@
  * masks are generated once per model and checked by eye. OVERRIDES records the
  * handful that need telling, with the reason.
  *
+ * The mask carries a second thing in its green channel: how far along the knife
+ * each texel sits, from the grip at 0 to the tip at 255. A texture atlas has no
+ * idea which way is along the blade, so without this a gradient can only run
+ * across the UV layout, which lands nowhere in particular on the model. With
+ * it, a fade can run guard to tip the way the real skin does.
+ *
  * The result ships as a small PNG per knife rather than being recomputed in the
  * browser, since it never changes for a given model.
  *
@@ -372,6 +378,26 @@ for (const knife of KNIVES) {
 
   const bonesSpoke = override !== "distance" && islands.some((i) => i.named !== REGION_NONE);
 
+  // Green channel: position along the knife, grip to tip.
+  let nearestReach = Infinity;
+  let farthestReach = -Infinity;
+  for (const triangle of triangles) {
+    const distance = reachFrom(pose, triangle.x, triangle.y, triangle.z);
+    if (distance < nearestReach) nearestReach = distance;
+    if (distance > farthestReach) farthestReach = distance;
+  }
+  const reachSpan = Math.max(1e-6, farthestReach - nearestReach);
+
+  const axis = new Uint8Array(width * height);
+  for (const triangle of triangles) {
+    const along =
+      (reachFrom(pose, triangle.x, triangle.y, triangle.z) - nearestReach) / reachSpan;
+    const value = Math.round(Math.min(1, Math.max(0, along)) * 255);
+    eachTexel(triangle.uv, width, height, (slot) => {
+      axis[slot] = value;
+    });
+  }
+
   const mask = new Uint8Array(width * height * 3);
   let blade = 0;
   let total = 0;
@@ -379,6 +405,7 @@ for (const knife of KNIVES) {
     const id = labels[slot];
     const value = id < 0 ? REGION_NONE : (region.get(id) ?? REGION_HANDLE);
     mask[slot * 3] = value;
+    mask[slot * 3 + 1] = axis[slot];
     if (value === REGION_NONE) continue;
     total += 1;
     if (value === REGION_BLADE) blade += 1;
@@ -402,11 +429,13 @@ for (const knife of KNIVES) {
     const preview = new Uint8Array(width * height * 3);
     for (let slot = 0; slot < width * height; slot += 1) {
       const value = mask[slot * 3];
+      // Region as hue, position along the knife as brightness.
+      const along = 0.35 + (mask[slot * 3 + 1] / 255) * 0.65;
       const tint =
         value === REGION_BLADE ? [90, 170, 240] : value === REGION_HANDLE ? [240, 150, 60] : null;
       for (let c = 0; c < 3; c += 1) {
         const base = rgba[slot * 4 + c];
-        preview[slot * 3 + c] = tint ? base * 0.4 + tint[c] * 0.6 : base * 0.25;
+        preview[slot * 3 + c] = tint ? (base * 0.3 + tint[c] * 0.7) * along : base * 0.2;
       }
     }
     await writeFile(
