@@ -7,63 +7,75 @@
  * modern light and dark palettes override them.
  */
 
-/* --- Modern dark, the default ------------------------------------------ */
+/* --- Dark, after Counter-Strike: Source ---------------------------------
+ *
+ * Cool slate panels with a warm amber accent, which is how the Source-era
+ * menus read: everything structural is a desaturated blue-grey and the only
+ * warmth in the interface is what it wants you to look at. Built from the
+ * look rather than extracted hex, since that game is not installed here, so
+ * these are values to tune rather than a reproduction.
+ */
 :root,
 :root[data-theme="dark"] {
-  --bg: #1b201c;
-  --secondary-bg: #131614;
+  --bg: #262c33;
+  --secondary-bg: #1a1f24;
 
-  --accent: #e8a13c;
-  --secondary-accent: #b87d24;
+  --accent: #e0a33c;
+  --secondary-accent: #b07c26;
 
-  --text: #e9ece7;
-  --secondary-text: #cfd4cd;
-  --text-3: #98a298;
+  --text: #e2e8ee;
+  --secondary-text: #b9c2cb;
+  --text-3: #7f8a95;
 
-  --border-light: #3c463e;
-  --border-dark: #0b0e0c;
+  --border-light: #454f59;
+  --border-dark: #0e1216;
 
-  --disabled-text: #5a635b;
+  --disabled-text: #5b656f;
   --disabled-text-shadow: transparent;
 
   --outline: #000;
-  --slider: #e8a13c;
-  --slider-bg: #0f1210;
+  --slider: #e0a33c;
+  --slider-bg: #12171b;
 
-  --scrollbar-track: #232a25;
+  --scrollbar-track: #2f363e;
 
   /* Ours, for surfaces cs16.css does not name. */
-  --stage: #0c0e0c;
-  --button-text: #f2f4f0;
+  --stage: #101418;
+  --button-text: #e8edf2;
   color-scheme: dark;
 }
 
-/* --- Modern light ------------------------------------------------------- */
+/* --- Light, the same palette turned over -------------------------------
+ *
+ * The same cool grey and the same amber, so switching themes moves the
+ * brightness and not the character. The accent darkens rather than changing
+ * hue, which is what keeps it legible on a pale ground without clashing.
+ */
 :root[data-theme="light"] {
-  --bg: #e7e3d9;
-  --secondary-bg: #f6f4ee;
+  --bg: #e4e7ea;
+  --secondary-bg: #f4f6f8;
 
-  --accent: #a96c15;
-  --secondary-accent: #7d4f0f;
+  --accent: #9a6a12;
+  --secondary-accent: #7a5310;
 
-  --text: #1e211c;
-  --secondary-text: #3a3f37;
-  --text-3: #6d7368;
+  --text: #1b2026;
+  --secondary-text: #39424b;
+  --text-3: #6b757f;
 
   --border-light: #ffffff;
-  --border-dark: #a49f92;
+  --border-dark: #a8b0b8;
 
-  --disabled-text: #a49f92;
+  --disabled-text: #a8b0b8;
   --disabled-text-shadow: #fff;
 
-  --outline: #55594f;
-  --slider: #a96c15;
-  --slider-bg: #cfcabb;
+  --outline: #4d5760;
+  --slider: #9a6a12;
+  --slider-bg: #cdd3d9;
 
-  --scrollbar-track: #d5d0c2;
+  --scrollbar-track: #d7dce1;
 
-  --stage: #171a15;
-  --button-text: #1e211c;
+  --stage: #141a1f;
+  --button-text: #1b2026;
   color-scheme: light;
 }
 
@@ -650,4 +662,54 @@ body {
   border: 1px solid var(--border-dark);
   background: var(--secondary-bg);
   align-self: center;
+}
+
+/* --- Live texture ------------------------------------------------------- */
+.texture-view {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 172px;
+  padding: 5px;
+  background: var(--bg);
+  display: grid;
+  gap: 5px;
+}
+.texture-view.closed {
+  width: auto;
+}
+
+.texture-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-3);
+  padding-left: 3px;
+}
+.texture-head .cs-btn {
+  font-size: 0.75rem;
+  padding: 2px 6px 1px;
+}
+
+.texture-view canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  border: 1px solid;
+  border-color: var(--border-dark) var(--border-light) var(--border-light)
+    var(--border-dark);
+  background: #000;
+}
+
+.texture-tabs {
+  display: flex;
+  gap: 2px;
+}
+.texture-tabs .cs-btn {
+  flex: 1;
+  font-size: 0.75rem;
+  padding: 3px 2px 2px;
 }

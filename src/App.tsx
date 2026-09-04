@@ -11,6 +11,7 @@ import { parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
 import { PATTERNS } from "./mdl/patterns";
 import { loadRegionMask, REGION_HANDLE, REGIONS, type RegionMask } from "./mdl/regions";
 import { FinishEditor } from "./ui/FinishEditor";
+import { TextureView } from "./ui/TextureView";
 import { ORIGINAL_FINISH, type Finish } from "./mdl/finish";
 import type { FinishLook } from "./mdl/recolor";
 import { useRecolor } from "./ui/useRecolor";
@@ -320,6 +321,7 @@ export default function App() {
             {loading && <p className="overlay">Loading {knifeName}…</p>}
             {error && <p className="overlay error">{error}</p>}
             {working && !loading && !error && <p className="overlay busy">Redrawing…</p>}
+            <TextureView model={model} recolored={recolored} mask={mask} />
           </div>
 
           <div className="readout">
