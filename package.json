@@ -12,7 +12,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "thumbnails": "esbuild scripts/build-thumbnails.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/thumbnails.mjs --log-level=warning && node node_modules/.tmp/thumbnails.mjs"
+    "thumbnails": "esbuild scripts/build-thumbnails.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/thumbnails.mjs --log-level=warning && node node_modules/.tmp/thumbnails.mjs",
+    "regions": "esbuild scripts/build-regions.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/regions.mjs --log-level=warning && node node_modules/.tmp/regions.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
