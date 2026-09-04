@@ -139,21 +139,31 @@ const clamp01 = (value: number) => (value < 0 ? 0 : value > 1 ? 1 : value);
  * difference between its patches is lightness, and lightness was exactly what
  * could not move.
  *
- * So the target's own value is used, modulated by how far this pixel sits from
- * its surroundings' average. A rivet that was darker than its neighbours stays
- * darker; a highlight stays a highlight. The detail survives while the surface
- * genuinely takes the new colour.
+ * So the target's own value is used, offset by how far this pixel sits from its
+ * surroundings. A rivet that was darker than its neighbours stays darker; a
+ * highlight stays a highlight. The detail survives while the surface genuinely
+ * takes the new colour.
  *
- * `mean` is the average value of the region being finished, and `strength`
- * mixes the whole result back toward the original, which is the difference
- * between a repaint and a wash.
+ * That offset is added, not multiplied. Multiplying was the first attempt and
+ * it fell apart on dark knives: with a texture living between 0.02 and 0.38,
+ * its brightest pixels are nineteen times its darkest, so anything above the
+ * average was scaled straight into white and the knife came out blown out
+ * rather than painted. Adding a deviation measured against the texture's own
+ * spread gives every knife the same amount of visible detail, bright or dark.
+ *
+ * `band` is the value range the region actually occupies, and `strength` mixes
+ * the whole result back toward the original, which is the difference between a
+ * repaint and a wash.
  */
+/** How much of the model's own light and shade survives a full-strength finish. */
+const DETAIL = 0.85;
+
 export function applyTint(
   source: Rgb,
   target: Hsv,
   strength: number,
   brightness: number,
-  mean: number,
+  band: { low: number; high: number },
 ): Rgb {
   const original = rgbToHsv(source[0], source[1], source[2]);
 
@@ -162,10 +172,12 @@ export function applyTint(
   const hue = original.s < 0.04 ? target.h : mixHue(original.h, target.h, strength);
   const saturation = original.s + (target.s - original.s) * strength;
 
-  // Relative brightness, clamped so a near-black pixel cannot multiply the
-  // target into nothing or a blown highlight into white.
-  const detail = Math.min(2.2, Math.max(0.12, original.v / Math.max(0.04, mean)));
-  const painted = clamp01(target.v * detail);
+  // Where this pixel sits within its own texture's range, roughly -0.5 to 0.5.
+  const spread = Math.max(0.12, band.high - band.low);
+  const middle = (band.low + band.high) / 2;
+  const deviation = Math.min(0.75, Math.max(-0.75, (original.v - middle) / spread));
+
+  const painted = clamp01(target.v + deviation * DETAIL);
   const value = clamp01((original.v + (painted - original.v) * strength) * (1 + brightness));
 
   return hsvToRgb(hue, clamp01(saturation), value);

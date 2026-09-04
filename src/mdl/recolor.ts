@@ -282,7 +282,7 @@ export function applyFinishes(
           hexToHsv(finish.color, finish.color2, blend),
           finish.strength,
           finish.brightness,
-          (band.low + band.high) / 2,
+          band,
         );
       } else {
         const rampBand = bands.get(id) ?? bands.get(ids[0])!;
@@ -341,7 +341,6 @@ export function applyFinishToPalette(
   }
 
   const band = measureBrightness(source, readPixels(model, texture));
-  const mean = (band.low + band.high) / 2;
   const target = hexToHsv(finish.color, finish.color2, 0);
 
   for (let entry = 0; entry < PALETTE_ENTRIES; entry += 1) {
@@ -351,7 +350,7 @@ export function applyFinishToPalette(
       target,
       finish.strength,
       finish.brightness,
-      mean,
+      band,
     );
     palette[o] = tinted[0];
     palette[o + 1] = tinted[1];
