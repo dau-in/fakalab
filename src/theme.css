@@ -256,10 +256,10 @@ body {
 
 .knife {
   display: grid;
-  grid-template-columns: 22px 1fr;
+  grid-template-columns: 40px 1fr;
   align-items: center;
   gap: 8px;
-  padding: 5px 7px;
+  padding: 3px 6px;
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
@@ -277,8 +277,10 @@ body {
   border-color: var(--border-dark) var(--border-light) var(--border-light)
     var(--border-dark);
 }
-.knife svg {
-  color: currentColor;
+/* Rendered from the model, so the picker shows the knife and not an icon. */
+.knife-thumb {
+  display: block;
+  image-rendering: auto;
 }
 
 /* --- Stage -------------------------------------------------------------- */

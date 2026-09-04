@@ -22,13 +22,18 @@ function chunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([head, data, tail]);
 }
 
-/** Encodes a tightly packed RGB buffer as a PNG. */
-export function encodePng(width: number, height: number, rgb: Uint8Array): Buffer {
-  const stride = width * 3;
+/** Encodes a tightly packed RGB or RGBA buffer as a PNG. */
+export function encodePng(
+  width: number,
+  height: number,
+  pixels: Uint8Array,
+  channels: 3 | 4 = 3,
+): Buffer {
+  const stride = width * channels;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y += 1) {
     raw[y * (stride + 1)] = 0;
-    Buffer.from(rgb.buffer, rgb.byteOffset + y * stride, stride).copy(
+    Buffer.from(pixels.buffer, pixels.byteOffset + y * stride, stride).copy(
       raw,
       y * (stride + 1) + 1,
     );
@@ -38,7 +43,7 @@ export function encodePng(width: number, height: number, rgb: Uint8Array): Buffe
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8;
-  ihdr[9] = 2;
+  ihdr[9] = channels === 4 ? 6 : 2;
 
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),

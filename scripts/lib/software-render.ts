@@ -13,7 +13,7 @@ import { setupBones } from "../../src/mdl/animation";
 import { applyPose, buildGeometry, type ModelGeometry } from "../../src/mdl/geometry";
 import { textureGammaTable, type GammaSettings } from "../../src/mdl/gamma";
 import { applyLightGamma, studioIllum } from "../../src/mdl/lighting";
-import { parseMdl, type MdlFile, type MdlSequence } from "../../src/mdl/parse";
+import { parseMdl, type MdlFile, type MdlSequence, type MdlTexture } from "../../src/mdl/parse";
 import { buildPalette, type RampStop } from "../../src/mdl/recolor";
 import { decodeToRgba, readPalette, readPixels } from "../../src/mdl/texture";
 import { isHandTexture } from "../../src/mdl/parse";
@@ -39,6 +39,8 @@ export interface RenderOptions {
   ramp?: RampStop[];
   /** RGB pixels drawn where the model is not, e.g. a real screenshot. */
   background?: Uint8Array;
+  /** Draw only the meshes whose texture passes this test. */
+  only?: (texture: MdlTexture) => boolean;
 }
 
 export interface RenderResult {
@@ -110,6 +112,7 @@ export function render(options: RenderOptions): RenderResult {
 
   posed.forEach((mesh, index) => {
     const source = geometry.meshes[index];
+    if (options.only && !options.only(source.texture)) return;
     const texture = textures.get(source.texture.name)!;
 
     for (let t = 0; t < source.triangleCount; t += 1) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { KNIVES, modelUrl } from "./data/knives";
+import logo from "./assets/karambit.svg";
+import { KNIVES, modelUrl, thumbnailUrl } from "./data/knives";
 import { DEFAULT_PRESET, PRESETS, toStops } from "./data/presets";
 import { fetchSound, previewSound, soundUrl } from "./data/sounds";
 import { buildBundle } from "./export";
@@ -14,7 +15,6 @@ import {
   DownloadIcon,
   EyeIcon,
   HelpIcon,
-  KnifeIcon,
   MoonIcon,
   OrbitIcon,
   PaletteIcon,
@@ -162,7 +162,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <span className="wordmark">
-          <KnifeIcon size={18} />
+          <img src={logo} width={22} height={22} alt="" />
           Faka<b>Lab</b>
         </span>
 
@@ -229,7 +229,14 @@ export default function App() {
               aria-pressed={knife.slug === slug}
               onClick={() => setSlug(knife.slug)}
             >
-              <KnifeIcon />
+              <img
+                className="knife-thumb"
+                src={thumbnailUrl(knife.slug)}
+                width={40}
+                height={40}
+                alt=""
+                loading="lazy"
+              />
               <span>{knife.name}</span>
             </button>
           ))}

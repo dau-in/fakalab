@@ -1,3 +1,5 @@
+<img src="src/assets/karambit-vgui.svg" width="64" height="64" alt="">
+
 # FakaLab
 
 Customize Counter-Strike 1.6 knife viewmodels in your browser. Pick a knife, apply a preset or
