@@ -41,7 +41,7 @@ const fail = (message: string) => {
   failures += 1;
 };
 
-console.log(`preset: ${preset.name}\n`);
+console.log(`materials: ${camo.name} on the blade, ${carbon.name} on the grip`);
 console.log("knife".padEnd(24) + "sounds".padStart(7) + "zip".padStart(10) + "  contents");
 
 for (const knife of KNIVES) {
@@ -141,7 +141,7 @@ for (const knife of KNIVES) {
     model,
     recolored,
     knifeName: knife.name,
-    presetName: "Marble",
+    presetName: camo.name,
   });
 
   const bytes = new Uint8Array(await bundle.blob.arrayBuffer());
