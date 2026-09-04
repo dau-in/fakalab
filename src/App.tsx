@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import logo from "./assets/karambit.svg";
 import { BACKDROPS, backdropUrl, DEFAULT_BACKDROP } from "./data/backdrops";
@@ -22,7 +22,13 @@ import { ORIGINAL_FINISH, type Finish } from "./mdl/finish";
 import type { FinishLook } from "./mdl/recolor";
 import { useRecolor } from "./ui/useRecolor";
 import { DEFAULT_LIGHTING, type Lighting } from "./three/goldsrcMaterial";
-import { Viewport } from "./three/Viewport";
+/**
+ * The 3D stack is the heaviest thing here and nothing needs it until the
+ * viewport mounts, so it arrives after the interface has painted.
+ */
+const Viewport = lazy(() =>
+  import("./three/Viewport").then((module) => ({ default: module.Viewport })),
+);
 import {
   CrosshairIcon,
   DownloadIcon,
@@ -300,13 +306,15 @@ export default function App() {
                 : undefined
             }
           >
-            <Viewport
-              model={model}
-              recolored={recolored}
-              lighting={lighting}
-              free={free}
-              playing={playing}
-            />
+            <Suspense fallback={<p className="overlay">Starting the preview…</p>}>
+              <Viewport
+                model={model}
+                recolored={recolored}
+                lighting={lighting}
+                free={free}
+                playing={playing}
+              />
+            </Suspense>
             {loading && <p className="overlay">Loading {knifeName}…</p>}
             {error && <p className="overlay error">{error}</p>}
             {working && !loading && !error && <p className="overlay busy">Redrawing…</p>}

@@ -17,6 +17,28 @@ Built for the CS 1.6 community, which is somehow still going strong.
 
 No upload, no backend, no server-side processing. Your files never leave your machine.
 
+## Running it yourself
+
+```
+npm install
+npm run dev
+```
+
+`npm run build` produces a static site in `dist/`, which any static host serves
+as-is. There are no environment variables and nothing to configure.
+
+The knife models, their sounds and the region masks are copied out of
+`models-source/` into `public/` by `npm run sync-assets`, which `dev` and
+`build` both run first. A few generated things are committed rather than built
+every time, since they only change when a model does: `npm run knife-art` draws
+the picker artwork, `npm run regions` works out which texels are blade and which
+are handle, and `npm run backdrops` turns the game's skyboxes into viewport
+backgrounds.
+
+`npm run verify` checks the two things that would quietly ruin an export: that a
+recolored model keeps its exact byte length and still parses, and that the zip
+contains every sound the model asks for at the path the engine looks in.
+
 ## How recoloring works
 
 A GoldSrc `.mdl` stores a model's appearance as an 8-bit indexed bitmap plus a 256-color palette.
