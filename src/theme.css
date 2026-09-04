@@ -294,8 +294,8 @@ body {
   border-color: var(--border-dark) var(--border-light) var(--border-light)
     var(--border-dark);
 }
-/* Rendered from the model, so the picker shows the knife and not an icon. */
-.knife-thumb {
+/* Drawn from the model and painted in the theme. */
+.knife-art {
   display: block;
   image-rendering: auto;
 }

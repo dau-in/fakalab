@@ -40,6 +40,8 @@ export interface RenderOptions {
   background?: Uint8Array;
   /** Draw only the meshes whose texture passes this test. */
   only?: (texture: MdlTexture) => boolean;
+  /** When given, each drawn pixel records which part of the knife it is. */
+  regions?: { width: number; height: number; region: Uint8Array };
 }
 
 export interface RenderResult {
@@ -57,6 +59,8 @@ export interface RenderResult {
    */
   texelPeak: Uint8Array;
   diffuse: Float32Array;
+  /** Which region each drawn pixel belongs to, when a mask was supplied. */
+  region: Uint8Array;
 }
 
 export function loadModel(path: string): MdlFile {
@@ -97,6 +101,7 @@ export function render(options: RenderOptions): RenderResult {
   const coverage = new Uint8Array(width * height);
   const texelPeak = new Uint8Array(width * height);
   const diffuseTerm = new Float32Array(width * height);
+  const regionOf = new Uint8Array(width * height);
   const depth = new Float32Array(width * height).fill(Infinity);
 
   // The player's view: GoldSrc is Z-up with X forward and Y to the left, and
@@ -180,12 +185,26 @@ export function render(options: RenderOptions): RenderResult {
             texture.rgba[texel + 2],
           );
           diffuseTerm[slot] = geometric;
+
+          // The same UV that picked the texel picks the region, so a pixel
+          // knows which part of the knife it is showing.
+          if (options.regions) {
+            const rx = Math.min(
+              options.regions.width - 1,
+              Math.max(0, Math.floor(u * options.regions.width)),
+            );
+            const ry = Math.min(
+              options.regions.height - 1,
+              Math.max(0, Math.floor(v * options.regions.height)),
+            );
+            regionOf[slot] = options.regions.region[ry * options.regions.width + rx];
+          }
         }
       }
     }
   });
 
-  return { rgb, coverage, texelPeak, diffuse: diffuseTerm };
+  return { rgb, coverage, texelPeak, diffuse: diffuseTerm, region: regionOf };
 }
 
 export { buildGeometry };

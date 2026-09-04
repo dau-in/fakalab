@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import logo from "./assets/karambit.svg";
 import { BACKDROPS, backdropUrl, DEFAULT_BACKDROP } from "./data/backdrops";
-import { KNIVES, modelUrl, thumbnailUrl } from "./data/knives";
+import { KNIVES, modelUrl } from "./data/knives";
 import { fetchSound, previewSound, soundUrl } from "./data/sounds";
 import { buildBundle } from "./export";
 import { idleSequence } from "./mdl/animation";
@@ -16,7 +16,6 @@ import {
 } from "./mdl/regions";
 import { FinishEditor } from "./ui/FinishEditor";
 import { KnifeArt } from "./ui/KnifeArt";
-import { hasArt } from "./ui/knife-art";
 import { TextureView } from "./ui/TextureView";
 import { materialOf } from "./data/materials";
 import { ORIGINAL_FINISH, type Finish } from "./mdl/finish";
@@ -286,18 +285,7 @@ export default function App() {
               aria-pressed={knife.slug === slug}
               onClick={() => setSlug(knife.slug)}
             >
-              {hasArt(knife.slug) ? (
-                <KnifeArt slug={knife.slug} />
-              ) : (
-                <img
-                  className="knife-thumb"
-                  src={thumbnailUrl(knife.slug)}
-                  width={40}
-                  height={40}
-                  alt=""
-                  loading="lazy"
-                />
-              )}
+              <KnifeArt slug={knife.slug} theme={theme} />
               <span>{knife.name}</span>
             </button>
           ))}

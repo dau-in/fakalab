@@ -36,8 +36,3 @@ export const KNIVES: Knife[] = [
 export function modelUrl(slug: string): string {
   return `${import.meta.env.BASE_URL}models/${slug}.mdl`;
 }
-
-/** Rendered from the model itself by scripts/build-thumbnails.ts. */
-export function thumbnailUrl(slug: string): string {
-  return `${import.meta.env.BASE_URL}thumbs/${slug}.png`;
-}
