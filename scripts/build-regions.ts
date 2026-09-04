@@ -56,13 +56,14 @@ import { KNIVES } from "../src/data/knives";
 import { buildGeometry, type MeshGeometry } from "../src/mdl/geometry";
 import { isHandTexture, type MdlFile, type MdlTexture } from "../src/mdl/parse";
 import { decodeToRgba, readPalette, readPixels } from "../src/mdl/texture";
+import {
+  encodeRegion,
+  REGION_BLADE,
+  REGION_HANDLE,
+  REGION_NONE,
+} from "../src/mdl/regions";
 import { encodePng } from "./lib/png";
 import { loadModel } from "./lib/software-render";
-
-/** Region ids, written into the red channel of the mask. */
-export const REGION_NONE = 0;
-export const REGION_HANDLE = 1;
-export const REGION_BLADE = 2;
 
 /** Below this an island is a seam or a stray sliver, not a part. */
 const MIN_ISLAND_TEXELS = 200;
@@ -404,7 +405,7 @@ for (const knife of KNIVES) {
   for (let slot = 0; slot < labels.length; slot += 1) {
     const id = labels[slot];
     const value = id < 0 ? REGION_NONE : (region.get(id) ?? REGION_HANDLE);
-    mask[slot * 3] = value;
+    mask[slot * 3] = encodeRegion(value);
     mask[slot * 3 + 1] = axis[slot];
     if (value === REGION_NONE) continue;
     total += 1;

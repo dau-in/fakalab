@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
 
-import { REGION_BLADE, REGION_HANDLE, type RegionMask } from "../../src/mdl/regions";
+import { decodeRegion, REGION_BLADE, REGION_HANDLE, type RegionMask } from "../../src/mdl/regions";
 
 export function readMaskFile(file: string): RegionMask {
   const buffer = readFileSync(file);
@@ -37,7 +37,7 @@ export function readMaskFile(file: string): RegionMask {
     for (let x = 0; x < width; x += 1) {
       const source = y * (stride + 1) + 1 + x * 3;
       const slot = y * width + x;
-      region[slot] = raw[source];
+      region[slot] = decodeRegion(raw[source]);
       along[slot] = raw[source + 1];
       if (region[slot] !== 0) seen.add(region[slot]);
     }

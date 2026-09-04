@@ -4,7 +4,19 @@
  *
  * Red channel: which part of the knife a texel belongs to.
  * Green channel: how far up the knife it sits, grip at 0 and tip at 255.
+ *
+ * The part is stored as 0, 127 or 254 rather than 0, 1 or 2. The browser reads
+ * this by drawing the image onto a canvas, and a canvas is free to apply colour
+ * management on the way in; a value of 1 that came back as 0 or 2 would scatter
+ * the regions at random, which is exactly what a knife looks like when every
+ * texel picks its finish by coin toss. Values a hundred apart survive anything
+ * a colour transform might do.
  */
+
+/** How region ids are stored in the file, and how to get them back. */
+export const REGION_STEP = 127;
+export const encodeRegion = (id: number) => Math.min(255, id * REGION_STEP);
+export const decodeRegion = (value: number) => Math.round(value / REGION_STEP);
 
 export const REGION_NONE = 0;
 export const REGION_HANDLE = 1;
@@ -61,7 +73,7 @@ export async function loadRegionMask(slug: string): Promise<RegionMask | null> {
   const seen = new Set<number>();
 
   for (let i = 0; i < count; i += 1) {
-    region[i] = data[i * 4];
+    region[i] = decodeRegion(data[i * 4]);
     along[i] = data[i * 4 + 1];
     if (region[i] !== REGION_NONE) seen.add(region[i]);
   }
