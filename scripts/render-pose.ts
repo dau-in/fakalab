@@ -17,8 +17,8 @@ import { idleSequence, setupBones } from "../src/mdl/animation";
 import { applyPose, boundsOf, buildGeometry, type PosedMesh } from "../src/mdl/geometry";
 import { parseMdl } from "../src/mdl/parse";
 import { decodeToRgba, readPalette, readPixels } from "../src/mdl/texture";
-import { PRESETS, toStops } from "../src/data/presets";
-import { buildPalette } from "../src/mdl/recolor";
+import { ORIGINAL_FINISH } from "../src/mdl/finish";
+import { applyTint, hexToHsv } from "../src/mdl/finish";
 import { isHandTexture } from "../src/mdl/parse";
 import { DEFAULT_GAMMA, textureGammaTable } from "../src/mdl/gamma";
 import { applyLightGamma, studioIllum } from "../src/mdl/lighting";
@@ -41,7 +41,7 @@ function studioLighting(nx: number, ny: number, nz: number): number {
 }
 
 const [, , slug = "karambit-knife", label = "idle", presetId = "none", ...frameArgs] = process.argv;
-const preset = PRESETS.find((candidate) => candidate.id === presetId);
+const tintColor = presetId === "none" ? null : presetId.startsWith("#") ? presetId : "#2b3a5c";
 const frames = frameArgs.length > 0 ? frameArgs.map(Number) : [0];
 
 const file = readFileSync(join(process.cwd(), "public", "models", `${slug}.mdl`));
@@ -59,10 +59,19 @@ const decoded = new Map<string, { rgba: Uint8ClampedArray; width: number; height
 for (const mesh of geometry.meshes) {
   if (decoded.has(mesh.texture.name)) continue;
   const pixels = readPixels(model, mesh.texture);
-  const palette =
-    preset && !isHandTexture(mesh.texture)
-      ? buildPalette(readPalette(model, mesh.texture), pixels, toStops(preset.colors))
-      : readPalette(model, mesh.texture);
+  const source = readPalette(model, mesh.texture);
+  let palette = source;
+  if (tintColor && !isHandTexture(mesh.texture)) {
+    const target = hexToHsv(tintColor, undefined, 0);
+    palette = new Uint8Array(768);
+    for (let entry = 0; entry < 256; entry += 1) {
+      const o = entry * 3;
+      const tinted = applyTint([source[o], source[o + 1], source[o + 2]], target, 0.85, 0);
+      palette[o] = tinted[0];
+      palette[o + 1] = tinted[1];
+      palette[o + 2] = tinted[2];
+    }
+  }
   decoded.set(mesh.texture.name, {
     rgba: decodeToRgba(pixels, palette, undefined, useGamma ? gammaTable : undefined),
     width: mesh.texture.width,
@@ -204,7 +213,7 @@ writeFileSync(
 const triangles = geometry.meshes.reduce((sum, mesh) => sum + mesh.triangleCount, 0);
 console.log(
   `${slug} · ${sequence.label} · ${sequence.numFrames} frames @ ${sequence.fps} fps · ` +
-    `preset ${preset?.name ?? "none"} · gamma ${useGamma ? "engine" : "off"}`,
+    `tint ${tintColor ?? "none"} · gamma ${useGamma ? "engine" : "off"}`,
 );
 console.log(`${geometry.meshes.length} meshes, ${triangles} triangles`);
 console.log(`frames rendered: ${frames.join(", ")}`);

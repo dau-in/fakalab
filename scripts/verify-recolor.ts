@@ -10,14 +10,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { KNIVES } from "../src/data/knives";
-import { PRESETS, toStops } from "../src/data/presets";
+import { ORIGINAL_FINISH } from "../src/mdl/finish";
 import { knifeTextures, parseMdl, soundEvents } from "../src/mdl/parse";
-import { buildRecoloredFile, measureBrightness, recolorTextures } from "../src/mdl/recolor";
+import { applyFinishToPalette, buildRecoloredFile, measureBrightness } from "../src/mdl/recolor";
 import { paletteOffset, readPalette, readPixels } from "../src/mdl/texture";
 
 const MODELS = join(process.cwd(), "public", "models");
-const preset = PRESETS.find((candidate) => candidate.id === "doppler")!;
-const stops = toStops(preset.colors);
 
 let failures = 0;
 const fail = (message: string) => {
@@ -25,7 +23,7 @@ const fail = (message: string) => {
   failures += 1;
 };
 
-console.log(`preset: ${preset.name}\n`);
+console.log("finish: a blued tint, palette only");
 console.log("knife".padEnd(18), "band".padEnd(13), "changed".padEnd(9), "outside palette");
 
 for (const knife of KNIVES) {
@@ -39,7 +37,8 @@ for (const knife of KNIVES) {
   const targets = knifeTextures(model);
   if (targets.length === 0) fail(`${knife.slug}: no knife texture found`);
 
-  const recolored = recolorTextures(model, targets, stops);
+  const finish = { ...ORIGINAL_FINISH, mode: "tint" as const, color: "#2b3a5c", strength: 0.8 };
+  const recolored = targets.map((texture) => applyFinishToPalette(model, texture, finish));
   const out = buildRecoloredFile(model, recolored);
 
   if (out.byteLength !== source.byteLength) {

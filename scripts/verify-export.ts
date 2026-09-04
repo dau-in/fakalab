@@ -17,17 +17,17 @@ import { join } from "node:path";
 import { unzipSync } from "fflate";
 
 import { KNIVES } from "../src/data/knives";
-import { PRESETS, toStops } from "../src/data/presets";
+import { PRESETS, finishesOf } from "../src/data/presets";
+import { ORIGINAL_FINISH } from "../src/mdl/finish";
 import { buildBundle } from "../src/export";
 import { knifeTextures, parseMdl, soundEvents } from "../src/mdl/parse";
-import { recolorPixelsOf, recolorTextures, type Look } from "../src/mdl/recolor";
+import { applyFinishToPalette, applyFinishes, type FinishLook } from "../src/mdl/recolor";
 import { REGION_BLADE, REGION_HANDLE } from "../src/mdl/regions";
 import { readMaskFile } from "./lib/read-mask";
 import { loadModel } from "./lib/software-render";
 
 const publicDir = join(process.cwd(), "public");
 const preset = PRESETS.find((candidate) => candidate.id === "doppler")!;
-const stops = toStops(preset.colors);
 
 const loadSound = (path: string) =>
   readFile(join(publicDir, "sound", path)).then(
@@ -45,7 +45,13 @@ console.log("knife".padEnd(24) + "sounds".padStart(7) + "zip".padStart(10) + "  
 
 for (const knife of KNIVES) {
   const model = loadModel(join(publicDir, "models", `${knife.slug}.mdl`));
-  const recolored = recolorTextures(model, knifeTextures(model), stops);
+  const recolored = knifeTextures(model).map((texture) =>
+    applyFinishes(model, texture, readMaskFile(join(publicDir, "regions", `${knife.slug}.png`)), {
+      finishes: finishesOf(preset, [REGION_HANDLE, REGION_BLADE]),
+      patternId: preset.patternId,
+      patternStrength: preset.patternStrength,
+    }),
+  );
   const wanted = soundEvents(model);
 
   const bundle = await buildBundle({
@@ -99,7 +105,9 @@ for (const knife of KNIVES) {
 const plainModel = loadModel(join(publicDir, "models", "karambit-knife.mdl"));
 const plain = await buildBundle({
   model: plainModel,
-  recolored: recolorTextures(plainModel, knifeTextures(plainModel), stops),
+  recolored: knifeTextures(plainModel).map((texture) =>
+    applyFinishToPalette(plainModel, texture, ORIGINAL_FINISH),
+  ),
   knifeName: "Karambit",
   presetName: preset.name,
 });
@@ -117,18 +125,17 @@ console.log("knife".padEnd(24) + "source".padStart(10) + "export".padStart(10) +
 for (const knife of KNIVES) {
   const model = loadModel(join(publicDir, "models", `${knife.slug}.mdl`));
   const mask = readMaskFile(join(publicDir, "regions", `${knife.slug}.png`));
-  const look: Look = {
-    ramps: {
-      [REGION_HANDLE]: toStops(["#1a0d05", "#5c3110", "#a3641f", "#e8b872"]),
-      [REGION_BLADE]: toStops(preset.colors),
+  const look: FinishLook = {
+    finishes: {
+      [REGION_HANDLE]: { ...ORIGINAL_FINISH, mode: "tint", color: "#6b6f68", color2: "#2f332e" },
+      [REGION_BLADE]: { ...ORIGINAL_FINISH, mode: "tint", color: "#2b3a5c", strength: 0.8 },
     },
-    adjust: { brightness: 0, contrast: 0 },
-    patternId: "marble",
-    patternStrength: 0.7,
+    patternId: "camo",
+    patternStrength: 0.9,
   };
 
   const recolored = knifeTextures(model).map((texture) =>
-    recolorPixelsOf(model, texture, mask, look),
+    applyFinishes(model, texture, mask, look),
   );
   const bundle = await buildBundle({
     model,

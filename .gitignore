@@ -27,3 +27,7 @@ node_modules/
 # synced from models-source at build time
 public/models/
 public/sound/
+
+# the maintainer's own knife, kept locally as a reference for what a
+# finished skin looks like; not ours to redistribute
+dauin_faka.mdl

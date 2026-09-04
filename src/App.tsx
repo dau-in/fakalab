@@ -2,15 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import logo from "./assets/karambit.svg";
 import { KNIVES, modelUrl, thumbnailUrl } from "./data/knives";
-import { DEFAULT_PRESET, PRESETS } from "./data/presets";
+import { DEFAULT_PRESET, finishesOf, PRESETS, type Preset } from "./data/presets";
 import { fetchSound, previewSound, soundUrl } from "./data/sounds";
 import { buildBundle } from "./export";
 import { idleSequence } from "./mdl/animation";
 import { parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
-import { toStops as rampFrom } from "./data/presets";
 import { PATTERNS } from "./mdl/patterns";
-import { loadRegionMask, REGIONS, type RegionMask } from "./mdl/regions";
-import type { Adjust, Look } from "./mdl/recolor";
+import { loadRegionMask, REGION_HANDLE, REGIONS, type RegionMask } from "./mdl/regions";
+import { FinishEditor } from "./ui/FinishEditor";
+import { ORIGINAL_FINISH, type Finish } from "./mdl/finish";
+import type { FinishLook } from "./mdl/recolor";
 import { useRecolor } from "./ui/useRecolor";
 import { DEFAULT_LIGHTING, type Lighting } from "./three/goldsrcMaterial";
 import { Viewport } from "./three/Viewport";
@@ -30,8 +31,6 @@ import {
 } from "./ui/icons";
 import { useTheme, type Theme } from "./ui/useTheme";
 
-const STOP_LABELS = ["Shadow", "Mid", "Light", "Peak"];
-
 const THEME_BUTTONS: Array<{ id: Theme; label: string; Icon: typeof SunIcon }> = [
   { id: "light", label: "Light", Icon: SunIcon },
   { id: "dark", label: "Dark", Icon: MoonIcon },
@@ -40,15 +39,16 @@ const THEME_BUTTONS: Array<{ id: Theme; label: string; Icon: typeof SunIcon }> =
 
 type Tab = "knife" | "scene";
 
-/** Editing scope: the whole knife, or one region of it. */
-const SCOPE_ALL = 0;
-
-/** Every region starts on the same preset, so a knife opens looking coherent. */
-function rampsFor(colors: string[]): Record<number, string[]> {
-  const out: Record<number, string[]> = { [SCOPE_ALL]: [...colors] };
-  for (const region of REGIONS) out[region.id] = [...colors];
-  return out;
+/** A preset's chip: the colours it actually applies, blade above handle. */
+function presetSwatch(preset: Preset): string {
+  const colors = REGIONS.map((region) => {
+    const finish = preset.finishes[region.id];
+    if (!finish || finish.mode === "original") return "#6f736c";
+    return finish.mode === "ramp" ? finish.ramp[2] : finish.color;
+  });
+  return `linear-gradient(160deg, ${colors[1]} 0%, ${colors[1]} 48%, ${colors[0]} 52%, ${colors[0]} 100%)`;
 }
+
 
 export default function App() {
   const [theme, setTheme] = useTheme();
@@ -59,11 +59,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id);
-  const [ramps, setRamps] = useState(() => rampsFor(DEFAULT_PRESET.colors));
-  const [scope, setScope] = useState<number>(SCOPE_ALL);
-  const [adjust, setAdjust] = useState<Adjust>({ brightness: 0, contrast: 0 });
-  const [patternId, setPatternId] = useState("none");
-  const [patternStrength, setPatternStrength] = useState(0.8);
+  const [finishes, setFinishes] = useState<Record<number, Finish>>(() =>
+    finishesOf(DEFAULT_PRESET, REGIONS.map((region) => region.id)),
+  );
+  const [part, setPart] = useState<number>(REGION_HANDLE);
+  const [patternId, setPatternId] = useState(DEFAULT_PRESET.patternId);
+  const [patternStrength, setPatternStrength] = useState(DEFAULT_PRESET.patternStrength);
   const [mask, setMask] = useState<RegionMask | null>(null);
 
   const [free, setFree] = useState(false);
@@ -126,23 +127,18 @@ export default function App() {
     [mask],
   );
 
-  const look = useMemo<Look>(
-    () => ({
-      ramps: Object.fromEntries(
-        Object.entries(ramps).map(([id, colors]) => [Number(id), rampFrom(colors)]),
-      ),
-      adjust,
-      patternId,
-      patternStrength,
-    }),
-    [ramps, adjust, patternId, patternStrength],
+  const look = useMemo<FinishLook>(
+    () => ({ finishes, patternId, patternStrength }),
+    [finishes, patternId, patternStrength],
   );
 
   const { textures: recolored, working, perPixel } = useRecolor(model, mask, look);
 
-  /** The ramp the editor is showing, which follows the scope. */
-  const editing = scope === SCOPE_ALL ? (regions[0]?.id ?? SCOPE_ALL) : scope;
-  const colors = ramps[editing] ?? ramps[SCOPE_ALL];
+  /** The part being edited; single-region knives only ever have the one. */
+  const editing = regions.some((region) => region.id === part)
+    ? part
+    : (regions[0]?.id ?? REGION_HANDLE);
+  const finish = finishes[editing] ?? ORIGINAL_FINISH;
 
   const lighting = useMemo<Lighting>(
     () => ({ ...DEFAULT_LIGHTING, ambient, shade }),
@@ -154,36 +150,24 @@ export default function App() {
 
   const knifeName = KNIVES.find((knife) => knife.slug === slug)?.name ?? slug;
 
-  /** Whole-knife edits write every region, so parts never drift apart. */
-  const writeRamp = useCallback(
-    (update: (colors: string[]) => string[]) => {
-      setRamps((previous) => {
-        const next = { ...previous };
-        const keys =
-          scope === SCOPE_ALL ? Object.keys(previous).map(Number) : [scope];
-        for (const key of keys) next[key] = update(previous[key] ?? previous[SCOPE_ALL]);
-        return next;
-      });
-    },
-    [scope],
-  );
-
   const applyPreset = useCallback(
     (id: string) => {
       const preset = PRESETS.find((candidate) => candidate.id === id);
       if (!preset) return;
-      if (scope === SCOPE_ALL) setPresetId(preset.id);
-      writeRamp(() => [...preset.colors]);
+      setPresetId(preset.id);
+      setFinishes(finishesOf(preset, REGIONS.map((region) => region.id)));
+      setPatternId(preset.patternId);
+      setPatternStrength(preset.patternStrength);
     },
-    [scope, writeRamp],
+    [],
   );
 
-  const setStopColor = useCallback(
-    (index: number, value: string) => {
+  const setFinish = useCallback(
+    (next: Finish) => {
       setPresetId("custom");
-      writeRamp((colors) => colors.map((color, i) => (i === index ? value : color)));
+      setFinishes((previous) => ({ ...previous, [editing]: next }));
     },
-    [writeRamp],
+    [editing],
   );
 
   const presetName =
@@ -376,33 +360,6 @@ export default function App() {
 
           {tab === "knife" ? (
             <div className="panel-body">
-              {regions.length > 1 && (
-                <section className="section">
-                  <h2>Colouring</h2>
-                  <div className="scope">
-                    <button
-                      type="button"
-                      className="cs-btn"
-                      aria-pressed={scope === SCOPE_ALL}
-                      onClick={() => setScope(SCOPE_ALL)}
-                    >
-                      Whole knife
-                    </button>
-                    {regions.map((region) => (
-                      <button
-                        key={region.id}
-                        type="button"
-                        className="cs-btn"
-                        aria-pressed={scope === region.id}
-                        onClick={() => setScope(region.id)}
-                      >
-                        {region.name}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
               <section className="section">
                 <h2>Finishes</h2>
                 <div className="presets">
@@ -416,39 +373,48 @@ export default function App() {
                     >
                       <span
                         className="chip"
-                        style={{
-                          background: `linear-gradient(150deg, ${preset.colors.join(",")})`,
-                        }}
+                        style={{ background: presetSwatch(preset) }}
                       />
                       <span>{preset.name}</span>
                     </button>
                   ))}
                 </div>
+                <p className="note" style={{ marginTop: 8 }}>
+                  Most of these treat one part and leave the other as the model
+                  made it, which is how real skins work.
+                </p>
               </section>
+
+              {regions.length > 1 && (
+                <section className="section">
+                  <h2>Part</h2>
+                  <div className="scope">
+                    {regions.map((region) => (
+                      <button
+                        key={region.id}
+                        type="button"
+                        className="cs-btn"
+                        aria-pressed={editing === region.id}
+                        onClick={() => setPart(region.id)}
+                      >
+                        {region.name}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <section className="section">
                 <h2>
-                  Ramp · shadow to light
-                  {scope !== SCOPE_ALL && regions.length > 1
-                    ? ` · ${regions.find((region) => region.id === scope)?.name.toLowerCase()}`
-                    : ""}
+                  {regions.length > 1
+                    ? `${regions.find((region) => region.id === editing)?.name ?? "Knife"} finish`
+                    : "Finish"}
                 </h2>
-                <div
-                  className="ramp inset"
-                  style={{ background: `linear-gradient(90deg, ${colors.join(",")})` }}
+                <FinishEditor
+                  finish={finish}
+                  patterned={patternId !== "none" && patternStrength > 0}
+                  onChange={setFinish}
                 />
-                <div className="stops">
-                  {colors.map((color, index) => (
-                    <label key={STOP_LABELS[index]} className="stop">
-                      <span>{STOP_LABELS[index]}</span>
-                      <input
-                        type="color"
-                        value={color}
-                        onChange={(event) => setStopColor(index, event.target.value)}
-                      />
-                    </label>
-                  ))}
-                </div>
               </section>
 
               <section className="section">
@@ -461,6 +427,7 @@ export default function App() {
                       className="cs-btn"
                       aria-pressed={pattern.id === patternId}
                       onClick={() => {
+                        setPresetId("custom");
                         setPatternId(pattern.id);
                         if (pattern.id !== "none") setPatternStrength(pattern.strength);
                       }}
@@ -486,54 +453,6 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                <p className="note" style={{ marginTop: 8 }}>
-                  A pattern moves each pixel along the ramp, so it picks up the
-                  ramp's colours rather than needing its own.
-                </p>
-              </section>
-
-              <section className="section">
-                <h2>Adjust</h2>
-                <div className="field">
-                  <span className="label">
-                    Brightness <b>{adjust.brightness.toFixed(2)}</b>
-                  </span>
-                  <div className="cs-slider">
-                    <input
-                      type="range"
-                      min={-0.5}
-                      max={0.5}
-                      step={0.01}
-                      value={adjust.brightness}
-                      onChange={(event) =>
-                        setAdjust((previous) => ({
-                          ...previous,
-                          brightness: Number(event.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="field">
-                  <span className="label">
-                    Contrast <b>{adjust.contrast.toFixed(2)}</b>
-                  </span>
-                  <div className="cs-slider">
-                    <input
-                      type="range"
-                      min={-1}
-                      max={1}
-                      step={0.02}
-                      value={adjust.contrast}
-                      onChange={(event) =>
-                        setAdjust((previous) => ({
-                          ...previous,
-                          contrast: Number(event.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
               </section>
             </div>
           ) : (

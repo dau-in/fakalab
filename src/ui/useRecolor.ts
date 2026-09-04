@@ -1,14 +1,16 @@
 import { useDeferredValue, useMemo } from "react";
 
+import { ORIGINAL_FINISH } from "../mdl/finish";
 import { knifeTextures, type MdlFile } from "../mdl/parse";
 import {
-  needsPixelPath,
-  recolorPixelsOf,
-  recolorTextures,
-  type Look,
+  applyFinishToPalette,
+  applyFinishes,
+  fitsPalettePath,
+  isUntouched,
+  type FinishLook,
   type RecoloredTexture,
 } from "../mdl/recolor";
-import type { RegionMask } from "../mdl/regions";
+import { REGION_NONE, type RegionMask } from "../mdl/regions";
 
 export interface RecolorState {
   textures: RecoloredTexture[];
@@ -19,23 +21,24 @@ export interface RecolorState {
 }
 
 /**
- * Runs whichever recolor path the current look needs.
+ * Runs whichever path the current look needs.
  *
- * One colour for the whole knife only rewrites a 768-byte palette, which is
- * fast enough to keep up with a slider being dragged. Colouring parts separately
- * or applying a pattern has to rewrite a quarter of a million pixel indices and
- * quantize the result, which takes long enough to be felt.
- *
- * So the expensive path runs off a deferred copy of the look: React keeps the
- * controls responsive and lets the preview arrive a beat later, rather than
- * stuttering the whole interface on every mouse move.
+ * A tint depends only on the colour a pixel already had, so one finish over the
+ * whole knife rewrites 768 bytes and keeps up with a slider being dragged.
+ * Different finishes per part, or any pattern, make colour depend on position,
+ * which means rewriting a quarter of a million indices and quantizing the
+ * result. That is slow enough to be felt, so it runs off a deferred copy of the
+ * look and the preview arrives a beat after the control does.
  */
 export function useRecolor(
   model: MdlFile | null,
   mask: RegionMask | null,
-  look: Look,
+  look: FinishLook,
 ): RecolorState {
-  const perPixel = useMemo(() => needsPixelPath(look, mask), [look, mask]);
+  const perPixel = useMemo(
+    () => !isUntouched(look, mask) && !fitsPalettePath(look, mask),
+    [look, mask],
+  );
 
   const deferred = useDeferredValue(look);
   const applied = perPixel ? deferred : look;
@@ -45,13 +48,13 @@ export function useRecolor(
     const targets = knifeTextures(model);
     if (targets.length === 0) return [];
 
-    if (!needsPixelPath(applied, mask)) {
-      const first = mask?.present[0] ?? 0;
-      const stops = applied.ramps[first] ?? Object.values(applied.ramps)[0] ?? [];
-      return recolorTextures(model, targets, stops, applied.adjust);
+    if (fitsPalettePath(applied, mask) || isUntouched(applied, mask)) {
+      const id = mask?.present[0] ?? REGION_NONE;
+      const finish = applied.finishes[id] ?? ORIGINAL_FINISH;
+      return targets.map((texture) => applyFinishToPalette(model, texture, finish));
     }
 
-    return targets.map((texture) => recolorPixelsOf(model, texture, mask, applied));
+    return targets.map((texture) => applyFinishes(model, texture, mask, applied));
   }, [model, mask, applied]);
 
   return { textures, working: perPixel && deferred !== look, perPixel };

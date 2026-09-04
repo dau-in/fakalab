@@ -24,9 +24,10 @@
 
 import { PALETTE_BYTES, type MdlFile, type MdlTexture } from "./parse";
 import { PALETTE_ENTRIES, paletteHistogram, paletteOffset, readPalette, readPixels } from "./texture";
-import { patternById, type Pattern } from "./patterns";
+import { patternById } from "./patterns";
 import { quantize } from "./quantize";
 import { REGION_NONE, type RegionMask } from "./regions";
+import { applyTint, hexToHsv, ORIGINAL_FINISH, type Finish } from "./finish";
 
 export type Rgb = [number, number, number];
 
@@ -138,77 +139,11 @@ function sampleRamp(stops: RampStop[], t: number): Rgb {
   return last.color;
 }
 
-/**
- * Builds the replacement palette for one texture. Returns 768 bytes ready to
- * be written straight over the original.
- */
-export function buildPalette(
-  source: Uint8Array,
-  pixels: Uint8Array,
-  stops: RampStop[],
-  adjust: Adjust = NEUTRAL_ADJUST,
-): Uint8Array {
-  const { low, high } = measureBrightness(source, pixels);
-  const span = high - low;
-
-  // Contrast bends the ramp lookup; brightness scales the result.
-  const curve = Math.pow(2, -adjust.contrast);
-  const gain = 1 + adjust.brightness;
-
-  const result = new Uint8Array(PALETTE_BYTES);
-  for (let entry = 0; entry < PALETTE_ENTRIES; entry += 1) {
-    const value = brightnessOf(source, entry);
-    const t = Math.pow(clamp01((value - low) / span), curve);
-    const color = sampleRamp(stops, t);
-
-    // Keep true black black: dead UV padding must not pick up the shadow color.
-    const guard = clamp01(value / DEAD_SPACE_CUTOFF) * gain;
-
-    const o = entry * 3;
-    result[o] = Math.min(255, Math.round(color[0] * guard));
-    result[o + 1] = Math.min(255, Math.round(color[1] * guard));
-    result[o + 2] = Math.min(255, Math.round(color[2] * guard));
-  }
-  return result;
-}
-
 export interface RecoloredTexture {
   texture: MdlTexture;
   palette: Uint8Array;
   /** Rewritten indices, present only when the pixel path ran. */
   pixels?: Uint8Array;
-}
-
-/** Everything that decides what a knife ends up looking like. */
-export interface Look {
-  /** One ramp per region id. A single entry means the whole knife. */
-  ramps: Record<number, RampStop[]>;
-  adjust: Adjust;
-  patternId: string;
-  /** How far the pattern shifts the ramp lookup, 0 to 1. */
-  patternStrength: number;
-}
-
-/** Whether a look needs the slower path that rewrites pixel indices. */
-export function needsPixelPath(look: Look, mask: RegionMask | null): boolean {
-  if (look.patternId !== "none" && look.patternStrength > 0) return true;
-  if (!mask || mask.present.length < 2) return false;
-
-  const ramps = mask.present.map((id) => JSON.stringify(look.ramps[id] ?? null));
-  return ramps.some((ramp) => ramp !== ramps[0]);
-}
-
-/** Applies a preset to every knife texture, leaving the hand textures alone. */
-export function recolorTextures(
-  model: MdlFile,
-  targets: MdlTexture[],
-  stops: RampStop[],
-  adjust: Adjust = NEUTRAL_ADJUST,
-): RecoloredTexture[] {
-  return targets.map((texture) => ({
-    texture,
-    palette: buildPalette(readPalette(model, texture), readPixels(model, texture), stops, adjust),
-  }));
 }
 
 /**
@@ -265,68 +200,150 @@ function regionBand(
   return measureBrightness(palette, synthetic);
 }
 
+
+/** A finish per region, plus a pattern that varies it across the surface. */
+export interface FinishLook {
+  finishes: Record<number, Finish>;
+  patternId: string;
+  patternStrength: number;
+}
+
+/** True when nothing would change, so the original bytes can be kept. */
+export function isUntouched(look: FinishLook, mask: RegionMask | null): boolean {
+  const ids = mask && mask.present.length > 0 ? mask.present : [REGION_NONE];
+  return ids.every((id) => (look.finishes[id] ?? ORIGINAL_FINISH).mode === "original");
+}
+
 /**
- * The pixel path: colour per region, optional pattern, then back down to 256
- * colours. Returns new indices alongside the new palette.
+ * The finish path: each region gets its own treatment, and the value channel of
+ * the source is carried through so the shading, bevels and engraving that make
+ * the knife look like an object survive whatever colour lands on it.
  */
-export function recolorPixelsOf(
+export function applyFinishes(
   model: MdlFile,
   texture: MdlTexture,
   mask: RegionMask | null,
-  look: Look,
+  look: FinishLook,
 ): RecoloredTexture {
   const source = readPalette(model, texture);
   const pixels = readPixels(model, texture);
   const { width, height } = texture;
 
-  const pattern: Pattern = patternById(look.patternId);
+  const pattern = patternById(look.patternId);
   const shift = look.patternId === "none" ? 0 : look.patternStrength;
 
-  const bands = new Map<number, BrightnessRange>();
-  const rampFor = new Map<number, RampStop[]>();
   const ids = mask && mask.present.length > 0 ? mask.present : [REGION_NONE];
-  for (const id of ids) {
-    bands.set(id, regionBand(source, pixels, mask, id));
-    rampFor.set(id, look.ramps[id] ?? look.ramps[ids[0]] ?? []);
-  }
+  const bands = new Map<number, BrightnessRange>();
+  for (const id of ids) bands.set(id, regionBand(source, pixels, mask, id));
 
-  const curve = Math.pow(2, -look.adjust.contrast);
-  const gain = 1 + look.adjust.brightness;
   const rgb = new Uint8Array(width * height * 3);
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const slot = y * width + x;
       const entry = pixels[slot];
-      const value = brightnessOf(source, entry);
+      const base: Rgb = [source[entry * 3], source[entry * 3 + 1], source[entry * 3 + 2]];
 
       const id = mask ? mask.region[slot] : REGION_NONE;
       if (mask && id === REGION_NONE) continue; // unused atlas space stays black
 
-      const band = bands.get(id) ?? bands.get(ids[0])!;
-      const stops = rampFor.get(id) ?? rampFor.get(ids[0])!;
-
-      let t = Math.pow(clamp01((value - band.low) / (band.high - band.low)), curve);
-      if (shift > 0) {
-        const field = pattern.field({
-          x,
-          y,
-          width,
-          height,
-          along: mask ? mask.along[slot] / 255 : 0.5,
-        });
-        // Centred so the pattern pushes both ways instead of only brightening.
-        t = clamp01(t + (field - 0.5) * shift * 2);
+      const finish = look.finishes[id] ?? ORIGINAL_FINISH;
+      if (finish.mode === "original") {
+        for (let c = 0; c < 3; c += 1) rgb[slot * 3 + c] = base[c];
+        continue;
       }
 
-      const color = sampleRamp(stops, t);
-      const guard = clamp01(value / DEAD_SPACE_CUTOFF) * gain;
-      for (let c = 0; c < 3; c += 1) {
-        rgb[slot * 3 + c] = Math.min(255, Math.round(color[c] * guard));
+      const field =
+        shift > 0
+          ? pattern.field({
+              x,
+              y,
+              width,
+              height,
+              along: mask ? mask.along[slot] / 255 : 0.5,
+            })
+          : 0.5;
+
+      let color: Rgb;
+      if (finish.mode === "tint") {
+        // A pattern picks between the finish's two colours, which is what a
+        // camo is: the same surface in two treatments, not a gradient.
+        const blend = shift > 0 ? clamp01((field - 0.5) * shift * 2 + 0.5) : 0;
+        color = applyTint(
+          base,
+          hexToHsv(finish.color, finish.color2, blend),
+          finish.strength,
+          finish.brightness,
+        );
+      } else {
+        const band = bands.get(id) ?? bands.get(ids[0])!;
+        const stops = finish.ramp.map((hex, i) => ({
+          at: i / Math.max(1, finish.ramp.length - 1),
+          color: hexToRgb(hex),
+        }));
+        const value = brightnessOf(source, entry);
+        let t = clamp01((value - band.low) / (band.high - band.low));
+        if (shift > 0) t = clamp01(t + (field - 0.5) * shift * 2);
+        const sampled = sampleRamp(stops, t);
+        const guard = clamp01(value / DEAD_SPACE_CUTOFF) * (1 + finish.brightness);
+        color = [
+          Math.min(255, Math.round(sampled[0] * guard)),
+          Math.min(255, Math.round(sampled[1] * guard)),
+          Math.min(255, Math.round(sampled[2] * guard)),
+        ];
       }
+
+      for (let c = 0; c < 3; c += 1) rgb[slot * 3 + c] = color[c];
     }
   }
 
   const quantized = quantize(rgb, width, height);
   return { texture, palette: quantized.palette, pixels: quantized.pixels };
+}
+
+
+/**
+ * True when one finish covers the whole knife with no pattern. A tint depends
+ * only on the colour a pixel already had, never on where it is, so that case
+ * can stay in palette space: 768 bytes, exact, and fast enough for a slider.
+ */
+export function fitsPalettePath(look: FinishLook, mask: RegionMask | null): boolean {
+  if (look.patternId !== "none" && look.patternStrength > 0) return false;
+
+  const ids = mask && mask.present.length > 0 ? mask.present : [REGION_NONE];
+  const finishes = ids.map((id) => look.finishes[id] ?? ORIGINAL_FINISH);
+  if (finishes.some((finish) => finish.mode === "ramp")) return false;
+
+  const first = JSON.stringify(finishes[0]);
+  return finishes.every((finish) => JSON.stringify(finish) === first);
+}
+
+/** The palette-only path: retint the 256 entries and leave the pixels alone. */
+export function applyFinishToPalette(
+  model: MdlFile,
+  texture: MdlTexture,
+  finish: Finish,
+): RecoloredTexture {
+  const source = readPalette(model, texture);
+  const palette = new Uint8Array(PALETTE_BYTES);
+
+  if (finish.mode === "original") {
+    palette.set(source);
+    return { texture, palette };
+  }
+
+  const target = hexToHsv(finish.color, finish.color2, 0);
+  for (let entry = 0; entry < PALETTE_ENTRIES; entry += 1) {
+    const o = entry * 3;
+    const tinted = applyTint(
+      [source[o], source[o + 1], source[o + 2]],
+      target,
+      finish.strength,
+      finish.brightness,
+    );
+    palette[o] = tinted[0];
+    palette[o + 1] = tinted[1];
+    palette[o + 2] = tinted[2];
+  }
+  return { texture, palette };
 }

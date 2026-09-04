@@ -603,3 +603,29 @@ body {
   font-size: 0.8125rem;
   color: var(--accent);
 }
+
+/* --- Finish editor ------------------------------------------------------ */
+.modes {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.modes .cs-btn {
+  flex: 1;
+  font-size: 0.8125rem;
+  padding: 4px 2px 3px;
+}
+
+.finish .note {
+  margin: 0;
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.swatches .stop input {
+  height: 30px;
+}

@@ -14,7 +14,6 @@ import { applyPose, buildGeometry, type ModelGeometry } from "../../src/mdl/geom
 import { textureGammaTable, type GammaSettings } from "../../src/mdl/gamma";
 import { applyLightGamma, studioIllum } from "../../src/mdl/lighting";
 import { parseMdl, type MdlFile, type MdlSequence, type MdlTexture } from "../../src/mdl/parse";
-import { buildPalette, type RampStop } from "../../src/mdl/recolor";
 import { decodeToRgba, readPalette, readPixels } from "../../src/mdl/texture";
 import { isHandTexture } from "../../src/mdl/parse";
 
@@ -35,8 +34,6 @@ export interface RenderOptions {
   lighting: SceneLighting;
   width: number;
   height: number;
-  /** Optional recolor applied to the knife textures only. */
-  ramp?: RampStop[];
   /** Pre-built replacements, keyed by texture name, for the pixel path. */
   replace?: Map<string, { palette: Uint8Array; pixels?: Uint8Array }>;
   /** RGB pixels drawn where the model is not, e.g. a real screenshot. */
@@ -84,11 +81,7 @@ export function render(options: RenderOptions): RenderResult {
     const swap = options.replace?.get(mesh.texture.name);
     const pixels = swap?.pixels ?? readPixels(model, mesh.texture);
     const source = readPalette(model, mesh.texture);
-    const palette =
-      swap?.palette ??
-      (options.ramp && !isHandTexture(mesh.texture)
-        ? buildPalette(source, pixels, options.ramp)
-        : source);
+    const palette = swap?.palette ?? source;
     textures.set(mesh.texture.name, {
       rgba: decodeToRgba(pixels, palette, undefined, gammaTable),
       width: mesh.texture.width,
