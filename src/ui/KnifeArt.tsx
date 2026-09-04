@@ -49,7 +49,11 @@ export function KnifeArt({ slug, size = 40, theme }: Props) {
     let cancelled = false;
     fetch(artUrl(slug))
       .then((response) => (response.ok ? response.blob() : Promise.reject(new Error("missing"))))
-      .then(createImageBitmap)
+      // The drawing carries material indices rather than colours, so the
+      // decoder is told to leave the bytes alone.
+      .then((blob) =>
+        createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" }),
+      )
       .then((bitmap) => {
         if (cancelled) {
           bitmap.close();
@@ -58,7 +62,7 @@ export function KnifeArt({ slug, size = 40, theme }: Props) {
         const scratch = document.createElement("canvas");
         scratch.width = bitmap.width;
         scratch.height = bitmap.height;
-        const context = scratch.getContext("2d", { willReadFrequently: true });
+        const context = scratch.getContext("2d", { willReadFrequently: true, colorSpace: "srgb" });
         if (context) {
           context.drawImage(bitmap, 0, 0);
           setSource(context.getImageData(0, 0, bitmap.width, bitmap.height));

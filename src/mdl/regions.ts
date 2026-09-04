@@ -56,12 +56,18 @@ export async function loadRegionMask(slug: string): Promise<RegionMask | null> {
   const response = await fetch(maskUrl(slug));
   if (!response.ok) return null;
 
-  const bitmap = await createImageBitmap(await response.blob());
+  // Not an image: every byte is an id, so the decoder is told to leave the
+  // values exactly as they are rather than convert them into the display's
+  // colour space on the way in.
+  const bitmap = await createImageBitmap(await response.blob(), {
+    colorSpaceConversion: "none",
+    premultiplyAlpha: "none",
+  });
   const canvas = document.createElement("canvas");
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
 
-  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const context = canvas.getContext("2d", { willReadFrequently: true, colorSpace: "srgb" });
   if (!context) return null;
   context.drawImage(bitmap, 0, 0);
   bitmap.close();
