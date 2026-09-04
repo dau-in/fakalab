@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { unzipSync } from "fflate";
 
 import { KNIVES } from "../src/data/knives";
-import { PRESETS, finishesOf } from "../src/data/presets";
+import { MATERIALS } from "../src/data/materials";
 import { ORIGINAL_FINISH } from "../src/mdl/finish";
 import { buildBundle } from "../src/export";
 import { knifeTextures, parseMdl, soundEvents } from "../src/mdl/parse";
@@ -27,7 +27,8 @@ import { readMaskFile } from "./lib/read-mask";
 import { loadModel } from "./lib/software-render";
 
 const publicDir = join(process.cwd(), "public");
-const preset = PRESETS.find((candidate) => candidate.id === "doppler")!;
+const camo = MATERIALS.find((candidate) => candidate.id === "digital")!;
+const carbon = MATERIALS.find((candidate) => candidate.id === "carbon")!;
 
 const loadSound = (path: string) =>
   readFile(join(publicDir, "sound", path)).then(
@@ -47,9 +48,10 @@ for (const knife of KNIVES) {
   const model = loadModel(join(publicDir, "models", `${knife.slug}.mdl`));
   const recolored = knifeTextures(model).map((texture) =>
     applyFinishes(model, texture, readMaskFile(join(publicDir, "regions", `${knife.slug}.png`)), {
-      finishes: finishesOf(preset, [REGION_HANDLE, REGION_BLADE]),
-      patternId: preset.patternId,
-      patternStrength: preset.patternStrength,
+      finishes: {
+        [REGION_BLADE]: { ...camo.finish },
+        [REGION_HANDLE]: { ...carbon.finish },
+      },
     }),
   );
   const wanted = soundEvents(model);
@@ -58,7 +60,7 @@ for (const knife of KNIVES) {
     model,
     recolored,
     knifeName: knife.name,
-    presetName: preset.name,
+    presetName: camo.name,
     loadSound,
   });
 
@@ -109,7 +111,7 @@ const plain = await buildBundle({
     applyFinishToPalette(plainModel, texture, ORIGINAL_FINISH),
   ),
   knifeName: "Karambit",
-  presetName: preset.name,
+  presetName: camo.name,
 });
 if (plain.filename !== "v_knife.mdl") fail(`plain export named ${plain.filename}`);
 if (plain.blob.size !== plainModel.header.length) {
@@ -127,11 +129,9 @@ for (const knife of KNIVES) {
   const mask = readMaskFile(join(publicDir, "regions", `${knife.slug}.png`));
   const look: FinishLook = {
     finishes: {
-      [REGION_HANDLE]: { ...ORIGINAL_FINISH, mode: "tint", color: "#6b6f68", color2: "#2f332e" },
-      [REGION_BLADE]: { ...ORIGINAL_FINISH, mode: "tint", color: "#2b3a5c", strength: 0.8 },
+      [REGION_BLADE]: { ...camo.finish },
+      [REGION_HANDLE]: { ...ORIGINAL_FINISH, mode: "tint", color: "#2b3a5c", strength: 0.8 },
     },
-    patternId: "camo",
-    patternStrength: 0.9,
   };
 
   const recolored = knifeTextures(model).map((texture) =>

@@ -24,10 +24,10 @@
 
 import { PALETTE_BYTES, type MdlFile, type MdlTexture } from "./parse";
 import { PALETTE_ENTRIES, paletteHistogram, paletteOffset, readPalette, readPixels } from "./texture";
-import { patternById } from "./patterns";
+import { patternById, quantizeField } from "./patterns";
 import { quantize } from "./quantize";
 import { REGION_NONE, type RegionMask } from "./regions";
-import { applyTint, hexToHsv, ORIGINAL_FINISH, type Finish } from "./finish";
+import { applyTint, hexToHsv, isPatterned, ORIGINAL_FINISH, type Finish } from "./finish";
 
 export type Rgb = [number, number, number];
 
@@ -201,11 +201,12 @@ function regionBand(
 }
 
 
-/** A finish per region, plus a pattern that varies it across the surface. */
+/**
+ * What each part of the knife is finished in. Nothing lives above the parts:
+ * a pattern belongs to the finish that uses it.
+ */
 export interface FinishLook {
   finishes: Record<number, Finish>;
-  patternId: string;
-  patternStrength: number;
 }
 
 /** True when nothing would change, so the original bytes can be kept. */
@@ -229,9 +230,6 @@ export function applyFinishes(
   const pixels = readPixels(model, texture);
   const { width, height } = texture;
 
-  const pattern = patternById(look.patternId);
-  const shift = look.patternId === "none" ? 0 : look.patternStrength;
-
   const ids = mask && mask.present.length > 0 ? mask.present : [REGION_NONE];
   const bands = new Map<number, BrightnessRange>();
   for (const id of ids) bands.set(id, regionBand(source, pixels, mask, id));
@@ -253,36 +251,47 @@ export function applyFinishes(
         continue;
       }
 
+      // The pattern belongs to this part's finish, so a camo on the blade
+      // leaves the grip untouched.
+      const pattern = patternById(finish.patternId);
+      const shift = isPatterned(finish) ? finish.patternStrength : 0;
       const field =
         shift > 0
-          ? pattern.field({
-              x,
-              y,
-              width,
-              height,
-              along: mask ? mask.along[slot] / 255 : 0.5,
-            })
+          ? quantizeField(
+              pattern.field({
+                x,
+                y,
+                width,
+                height,
+                along: mask ? mask.along[slot] / 255 : 0.5,
+              }),
+              pattern.levels,
+            )
           : 0.5;
 
       let color: Rgb;
       if (finish.mode === "tint") {
         // A pattern picks between the finish's two colours, which is what a
-        // camo is: the same surface in two treatments, not a gradient.
-        const blend = shift > 0 ? clamp01((field - 0.5) * shift * 2 + 0.5) : 0;
+        // camo is: the same surface in two treatments, not a gradient. The
+        // value channel underneath is untouched either way, so the model's
+        // rivets and bevels still read through the pattern.
+        const blend = shift > 0 ? clamp01((field - 0.5) * shift + 0.5) : 0;
+        const band = bands.get(id) ?? bands.get(ids[0])!;
         color = applyTint(
           base,
           hexToHsv(finish.color, finish.color2, blend),
           finish.strength,
           finish.brightness,
+          (band.low + band.high) / 2,
         );
       } else {
-        const band = bands.get(id) ?? bands.get(ids[0])!;
+        const rampBand = bands.get(id) ?? bands.get(ids[0])!;
         const stops = finish.ramp.map((hex, i) => ({
           at: i / Math.max(1, finish.ramp.length - 1),
           color: hexToRgb(hex),
         }));
         const value = brightnessOf(source, entry);
-        let t = clamp01((value - band.low) / (band.high - band.low));
+        let t = clamp01((value - rampBand.low) / (rampBand.high - rampBand.low));
         if (shift > 0) t = clamp01(t + (field - 0.5) * shift * 2);
         const sampled = sampleRamp(stops, t);
         const guard = clamp01(value / DEAD_SPACE_CUTOFF) * (1 + finish.brightness);
@@ -308,11 +317,10 @@ export function applyFinishes(
  * can stay in palette space: 768 bytes, exact, and fast enough for a slider.
  */
 export function fitsPalettePath(look: FinishLook, mask: RegionMask | null): boolean {
-  if (look.patternId !== "none" && look.patternStrength > 0) return false;
-
   const ids = mask && mask.present.length > 0 ? mask.present : [REGION_NONE];
   const finishes = ids.map((id) => look.finishes[id] ?? ORIGINAL_FINISH);
-  if (finishes.some((finish) => finish.mode === "ramp")) return false;
+
+  if (finishes.some((finish) => isPatterned(finish) || finish.mode === "ramp")) return false;
 
   const first = JSON.stringify(finishes[0]);
   return finishes.every((finish) => JSON.stringify(finish) === first);
@@ -332,7 +340,10 @@ export function applyFinishToPalette(
     return { texture, palette };
   }
 
+  const band = measureBrightness(source, readPixels(model, texture));
+  const mean = (band.low + band.high) / 2;
   const target = hexToHsv(finish.color, finish.color2, 0);
+
   for (let entry = 0; entry < PALETTE_ENTRIES; entry += 1) {
     const o = entry * 3;
     const tinted = applyTint(
@@ -340,6 +351,7 @@ export function applyFinishToPalette(
       target,
       finish.strength,
       finish.brightness,
+      mean,
     );
     palette[o] = tinted[0];
     palette[o + 1] = tinted[1];

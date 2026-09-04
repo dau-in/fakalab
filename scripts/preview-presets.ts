@@ -5,9 +5,9 @@ import { idleSequence } from "../src/mdl/animation";
 import { buildGeometry } from "../src/mdl/geometry";
 import { DEFAULT_GAMMA } from "../src/mdl/gamma";
 import { isHandTexture } from "../src/mdl/parse";
-import { PRESETS, finishesOf } from "../src/data/presets";
+import { MATERIALS } from "../src/data/materials";
 import { applyFinishes, type FinishLook } from "../src/mdl/recolor";
-import { REGIONS } from "../src/mdl/regions";
+import { REGION_BLADE } from "../src/mdl/regions";
 import { encodePng } from "./lib/png";
 import { readMaskFile } from "./lib/read-mask";
 import { loadModel, render } from "./lib/software-render";
@@ -46,12 +46,11 @@ function crop(rgb: Uint8Array, coverage: Uint8Array): Uint8Array {
   return out;
 }
 
-const ids = REGIONS.map((r) => r.id);
-const cells = PRESETS.map((preset) => {
+// Each material shown on the blade, with the grip left as it came, which is
+// how they are actually chosen.
+const cells = MATERIALS.map((material) => {
   const look: FinishLook = {
-    finishes: finishesOf(preset, ids),
-    patternId: preset.patternId,
-    patternStrength: preset.patternStrength,
+    finishes: { [REGION_BLADE]: { ...material.finish } },
   };
   const recolored = applyFinishes(model, texture, mask, look);
   const result = render({
@@ -74,7 +73,7 @@ cells.forEach((cell, i) => {
       sheet[d] = cell[s]; sheet[d + 1] = cell[s + 1]; sheet[d + 2] = cell[s + 2];
     }
 });
-const out = join(process.cwd(), "node_modules", ".tmp", `presets-${slug}.png`);
+const out = join(process.cwd(), "node_modules", ".tmp", `materials-${slug}.png`);
 writeFileSync(out, encodePng(cols * SIZE, rows * SIZE, sheet));
-console.log(PRESETS.map((p, i) => `${i + 1}.${p.name}`).join("  "));
+console.log(MATERIALS.map((m, i) => `${i + 1}.${m.name}`).join("  "));
 console.log(out);

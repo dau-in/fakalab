@@ -71,10 +71,17 @@ export interface Finish {
   mode: FinishMode;
   /** Target colour for a tint. */
   color: string;
-  /** Second colour, used by patterns to give a surface two treatments. */
-  color2?: string;
+  /** The colour the pattern alternates with. */
+  color2: string;
   /** Ramp stops, only for the ramp mode. */
   ramp: string[];
+  /**
+   * The surface texture, and how hard it separates the two colours. These
+   * belong to the part rather than to the knife: a camo on the blade must be
+   * able to leave the grip alone.
+   */
+  patternId: string;
+  patternStrength: number;
   /**
    * How much of the target's hue and saturation to take, 0 to 1. Below 1 the
    * original material shows through, which is how a blued steel or a stained
@@ -107,23 +114,46 @@ function parseHex(hex: string): Rgb {
 export const ORIGINAL_FINISH: Finish = {
   mode: "original",
   color: "#8a8f88",
+  color2: "#3a3f38",
   ramp: ["#20241f", "#4a5147", "#7d857a", "#c9cfc4"],
+  patternId: "none",
+  patternStrength: 0,
   strength: 1,
   brightness: 0,
 };
 
+/** Whether this finish changes colour from place to place rather than by value. */
+export function isPatterned(finish: Finish): boolean {
+  return finish.mode !== "original" && finish.patternId !== "none" && finish.patternStrength > 0;
+}
+
 const clamp01 = (value: number) => (value < 0 ? 0 : value > 1 ? 1 : value);
 
 /**
- * Applies a tint to one source colour: the target's hue and saturation, the
- * source's value. `strength` mixes back toward the original so a finish can be
- * a wash rather than a repaint.
+ * Applies a finish colour to one source colour.
+ *
+ * The first version of this kept the source's value untouched and replaced
+ * only hue and saturation. That preserved the shading, but it also meant a
+ * colour could never change how light a surface is, so painting a dark blade
+ * red gave dark red, and a camo made of four greys was invisible: the
+ * difference between its patches is lightness, and lightness was exactly what
+ * could not move.
+ *
+ * So the target's own value is used, modulated by how far this pixel sits from
+ * its surroundings' average. A rivet that was darker than its neighbours stays
+ * darker; a highlight stays a highlight. The detail survives while the surface
+ * genuinely takes the new colour.
+ *
+ * `mean` is the average value of the region being finished, and `strength`
+ * mixes the whole result back toward the original, which is the difference
+ * between a repaint and a wash.
  */
 export function applyTint(
   source: Rgb,
   target: Hsv,
   strength: number,
   brightness: number,
+  mean: number,
 ): Rgb {
   const original = rgbToHsv(source[0], source[1], source[2]);
 
@@ -131,7 +161,12 @@ export function applyTint(
   // there would swing the result around arbitrarily. Take the target's.
   const hue = original.s < 0.04 ? target.h : mixHue(original.h, target.h, strength);
   const saturation = original.s + (target.s - original.s) * strength;
-  const value = clamp01(original.v * (1 + brightness));
+
+  // Relative brightness, clamped so a near-black pixel cannot multiply the
+  // target into nothing or a blown highlight into white.
+  const detail = Math.min(2.2, Math.max(0.12, original.v / Math.max(0.04, mean)));
+  const painted = clamp01(target.v * detail);
+  const value = clamp01((original.v + (painted - original.v) * strength) * (1 + brightness));
 
   return hsvToRgb(hue, clamp01(saturation), value);
 }

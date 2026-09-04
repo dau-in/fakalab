@@ -3,17 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import logo from "./assets/karambit.svg";
 import { BACKDROPS, backdropUrl, DEFAULT_BACKDROP } from "./data/backdrops";
 import { KNIVES, modelUrl, thumbnailUrl } from "./data/knives";
-import { DEFAULT_PRESET, finishesOf, PRESETS, type Preset } from "./data/presets";
 import { fetchSound, previewSound, soundUrl } from "./data/sounds";
 import { buildBundle } from "./export";
 import { idleSequence } from "./mdl/animation";
 import { parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
-import { PATTERNS } from "./mdl/patterns";
-import { loadRegionMask, REGION_HANDLE, REGIONS, type RegionMask } from "./mdl/regions";
+import {
+  loadRegionMask,
+  REGION_BLADE,
+  REGION_HANDLE,
+  REGIONS,
+  type RegionMask,
+} from "./mdl/regions";
 import { FinishEditor } from "./ui/FinishEditor";
 import { KnifeArt } from "./ui/KnifeArt";
 import { hasArt } from "./ui/knife-art";
 import { TextureView } from "./ui/TextureView";
+import { materialOf } from "./data/materials";
 import { ORIGINAL_FINISH, type Finish } from "./mdl/finish";
 import type { FinishLook } from "./mdl/recolor";
 import { useRecolor } from "./ui/useRecolor";
@@ -44,16 +49,6 @@ const THEME_BUTTONS: Array<{ id: Theme; label: string; Icon: typeof SunIcon }> =
 
 type Tab = "knife" | "scene";
 
-/** A preset's chip: the colours it actually applies, blade above handle. */
-function presetSwatch(preset: Preset): string {
-  const colors = REGIONS.map((region) => {
-    const finish = preset.finishes[region.id];
-    if (!finish || finish.mode === "original") return "#6f736c";
-    return finish.mode === "ramp" ? finish.ramp[2] : finish.color;
-  });
-  return `linear-gradient(160deg, ${colors[1]} 0%, ${colors[1]} 48%, ${colors[0]} 52%, ${colors[0]} 100%)`;
-}
-
 
 export default function App() {
   const [theme, setTheme] = useTheme();
@@ -63,13 +58,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [presetId, setPresetId] = useState(DEFAULT_PRESET.id);
   const [finishes, setFinishes] = useState<Record<number, Finish>>(() =>
-    finishesOf(DEFAULT_PRESET, REGIONS.map((region) => region.id)),
+    Object.fromEntries(REGIONS.map((region) => [region.id, { ...ORIGINAL_FINISH }])),
   );
-  const [part, setPart] = useState<number>(REGION_HANDLE);
-  const [patternId, setPatternId] = useState(DEFAULT_PRESET.patternId);
-  const [patternStrength, setPatternStrength] = useState(DEFAULT_PRESET.patternStrength);
+  const [part, setPart] = useState<number>(REGION_BLADE);
   const [mask, setMask] = useState<RegionMask | null>(null);
   const [backdrop, setBackdrop] = useState(DEFAULT_BACKDROP);
 
@@ -133,10 +125,7 @@ export default function App() {
     [mask],
   );
 
-  const look = useMemo<FinishLook>(
-    () => ({ finishes, patternId, patternStrength }),
-    [finishes, patternId, patternStrength],
-  );
+  const look = useMemo<FinishLook>(() => ({ finishes }), [finishes]);
 
   const { textures: recolored, working, perPixel } = useRecolor(model, mask, look);
 
@@ -156,28 +145,20 @@ export default function App() {
 
   const knifeName = KNIVES.find((knife) => knife.slug === slug)?.name ?? slug;
 
-  const applyPreset = useCallback(
-    (id: string) => {
-      const preset = PRESETS.find((candidate) => candidate.id === id);
-      if (!preset) return;
-      setPresetId(preset.id);
-      setFinishes(finishesOf(preset, REGIONS.map((region) => region.id)));
-      setPatternId(preset.patternId);
-      setPatternStrength(preset.patternStrength);
-    },
-    [],
-  );
-
   const setFinish = useCallback(
     (next: Finish) => {
-      setPresetId("custom");
       setFinishes((previous) => ({ ...previous, [editing]: next }));
     },
     [editing],
   );
 
-  const presetName =
-    PRESETS.find((preset) => preset.id === presetId)?.name ?? "Custom";
+  /** Names the download after what was actually applied. */
+  const presetName = useMemo(() => {
+    const names = regions
+      .map((region) => materialOf(finishes[region.id] ?? ORIGINAL_FINISH))
+      .filter((id) => id !== "original");
+    return names.length === 0 ? "original" : [...new Set(names)].join("-");
+  }, [regions, finishes]);
 
   const download = useCallback(async () => {
     if (!model || recolored.length === 0) return;
@@ -394,34 +375,9 @@ export default function App() {
 
           {tab === "knife" ? (
             <div className="panel-body">
-              <section className="section">
-                <h2>Finishes</h2>
-                <div className="presets">
-                  {PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      className="preset raised"
-                      aria-pressed={preset.id === presetId}
-                      onClick={() => applyPreset(preset.id)}
-                    >
-                      <span
-                        className="chip"
-                        style={{ background: presetSwatch(preset) }}
-                      />
-                      <span>{preset.name}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="note" style={{ marginTop: 8 }}>
-                  Most of these treat one part and leave the other as the model
-                  made it, which is how real skins work.
-                </p>
-              </section>
-
               {regions.length > 1 && (
                 <section className="section">
-                  <h2>Part</h2>
+                  <h2>Which part</h2>
                   <div className="scope">
                     {regions.map((region) => (
                       <button
@@ -435,58 +391,21 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                  <p className="note" style={{ marginTop: 8 }}>
+                    Each part is finished on its own. Nothing you choose here
+                    reaches the other one.
+                  </p>
                 </section>
               )}
 
               <section className="section">
-                <h2>
-                  {regions.length > 1
-                    ? `${regions.find((region) => region.id === editing)?.name ?? "Knife"} finish`
-                    : "Finish"}
-                </h2>
                 <FinishEditor
                   finish={finish}
-                  patterned={patternId !== "none" && patternStrength > 0}
+                  partName={
+                    regions.find((region) => region.id === editing)?.name ?? "The knife"
+                  }
                   onChange={setFinish}
                 />
-              </section>
-
-              <section className="section">
-                <h2>Pattern</h2>
-                <div className="patterns">
-                  {PATTERNS.map((pattern) => (
-                    <button
-                      key={pattern.id}
-                      type="button"
-                      className="cs-btn"
-                      aria-pressed={pattern.id === patternId}
-                      onClick={() => {
-                        setPresetId("custom");
-                        setPatternId(pattern.id);
-                        if (pattern.id !== "none") setPatternStrength(pattern.strength);
-                      }}
-                    >
-                      {pattern.name}
-                    </button>
-                  ))}
-                </div>
-                {patternId !== "none" && (
-                  <div className="field" style={{ marginTop: 10 }}>
-                    <span className="label">
-                      Amount <b>{patternStrength.toFixed(2)}</b>
-                    </span>
-                    <div className="cs-slider">
-                      <input
-                        type="range"
-                        min={0.05}
-                        max={1}
-                        step={0.05}
-                        value={patternStrength}
-                        onChange={(event) => setPatternStrength(Number(event.target.value))}
-                      />
-                    </div>
-                  </div>
-                )}
               </section>
             </div>
           ) : (
@@ -598,7 +517,7 @@ export default function App() {
         <span className="spacer" />
 
         <span className="export-note">
-          {knifeName.toLowerCase()} · {presetName.toLowerCase()}
+          {knifeName.toLowerCase()} · {presetName}
           <br />
           {withSounds && sounds.length > 0
             ? `zip with the model and ${sounds.length} sounds`
