@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- The knife from the picker, drawn from the model like every thumbnail.
+         Under a new name because a browser holds on to the icon it already has
+         for a site far longer than it holds on to the page. -->
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/icon.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icon.png" />
     <meta
       name="description"
       content="Customize Counter-Strike 1.6 knife viewmodels in your browser and download a ready-to-use v_knife.mdl. Early beta."
