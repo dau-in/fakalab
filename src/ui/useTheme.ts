@@ -9,6 +9,18 @@ function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (THEMES as readonly string[]).includes(value);
 }
 
+/**
+ * Puts the theme on the document.
+ *
+ * This has to happen before anything reads the theme's custom properties, and
+ * an effect is too late: React runs a child's effects before its parent's, so
+ * the knife artwork, which paints itself by reading those properties, was
+ * drawing with the previous theme's colours and stayed one change behind.
+ */
+function applyTheme(theme: Theme): void {
+  document.documentElement.setAttribute("data-theme", theme);
+}
+
 /** Stored choice first, then the viewer's system preference. */
 function initialTheme(): Theme {
   try {
@@ -27,13 +39,20 @@ function initialTheme(): Theme {
 }
 
 export function useTheme(): [Theme, (theme: Theme) => void] {
-  const [theme, setThemeState] = useState<Theme>(initialTheme);
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const chosen = initialTheme();
+    applyTheme(chosen);
+    return chosen;
+  });
 
+  // A safety net for anything that changes the state without going through
+  // setTheme; the real work is done before the render that needs it.
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    applyTheme(theme);
   }, [theme]);
 
   const setTheme = useCallback((next: Theme) => {
+    applyTheme(next);
     setThemeState(next);
     try {
       localStorage.setItem(STORAGE_KEY, next);
