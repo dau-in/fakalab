@@ -141,3 +141,11 @@ export function SceneIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function HelpIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 3h6v1H5zM4 4h2v2H4zM10 4h2v3h-2zM9 7h2v2H9zM7 9h2v3H7zM7 13h2v2H7z" />
+    </Svg>
+  );
+}

@@ -2,15 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { KNIVES, modelUrl } from "./data/knives";
 import { DEFAULT_PRESET, PRESETS, toStops } from "./data/presets";
+import { fetchSound, previewSound, soundUrl } from "./data/sounds";
+import { buildBundle } from "./export";
 import { idleSequence } from "./mdl/animation";
 import { knifeTextures, parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
-import { buildRecoloredFile, recolorTextures, type Adjust } from "./mdl/recolor";
+import { recolorTextures, type Adjust } from "./mdl/recolor";
 import { DEFAULT_LIGHTING, type Lighting } from "./three/goldsrcMaterial";
 import { Viewport } from "./three/Viewport";
 import {
   CrosshairIcon,
   DownloadIcon,
   EyeIcon,
+  HelpIcon,
   KnifeIcon,
   MoonIcon,
   OrbitIcon,
@@ -49,6 +52,8 @@ export default function App() {
   const [playing, setPlaying] = useState(true);
   const [tab, setTab] = useState<Tab>("knife");
   const [withSounds, setWithSounds] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [ambient, setAmbient] = useState(DEFAULT_LIGHTING.ambient);
   const [shade, setShade] = useState(DEFAULT_LIGHTING.shade);
 
@@ -97,6 +102,8 @@ export default function App() {
   const sequence = useMemo(() => (model ? idleSequence(model) : null), [model]);
   const sounds = useMemo(() => (model ? soundEvents(model) : []), [model]);
 
+  const knifeName = KNIVES.find((knife) => knife.slug === slug)?.name ?? slug;
+
   const applyPreset = useCallback((id: string) => {
     const preset = PRESETS.find((candidate) => candidate.id === id);
     if (!preset) return;
@@ -109,19 +116,40 @@ export default function App() {
     setColors((previous) => previous.map((color, i) => (i === index ? value : color)));
   }, []);
 
-  const download = useCallback(() => {
-    if (!model || recolored.length === 0) return;
-    const bytes = buildRecoloredFile(model, recolored);
-    if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
-    downloadUrl.current = URL.createObjectURL(
-      new Blob([bytes], { type: "application/octet-stream" }),
-    );
+  const presetName =
+    PRESETS.find((preset) => preset.id === presetId)?.name ?? "Custom";
 
-    const link = document.createElement("a");
-    link.href = downloadUrl.current;
-    link.download = "v_knife.mdl";
-    link.click();
-  }, [model, recolored]);
+  const download = useCallback(async () => {
+    if (!model || recolored.length === 0) return;
+    setExporting(true);
+    try {
+      const bundle = await buildBundle({
+        model,
+        recolored,
+        knifeName,
+        presetName,
+        ...(withSounds && sounds.length > 0 ? { loadSound: fetchSound } : {}),
+      });
+
+      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
+      downloadUrl.current = URL.createObjectURL(bundle.blob);
+
+      const link = document.createElement("a");
+      link.href = downloadUrl.current;
+      link.download = bundle.filename;
+      link.click();
+    } finally {
+      setExporting(false);
+    }
+  }, [model, recolored, knifeName, presetName, withSounds, sounds]);
+
+  const playPreview = useCallback(() => {
+    const path = previewSound(sounds);
+    if (!path) return;
+    void new Audio(soundUrl(path)).play().catch(() => {
+      // Autoplay policies and missing files are both non-events here.
+    });
+  }, [sounds]);
 
   useEffect(
     () => () => {
@@ -129,8 +157,6 @@ export default function App() {
     },
     [],
   );
-
-  const knifeName = KNIVES.find((knife) => knife.slug === slug)?.name ?? slug;
 
   return (
     <div className="app">
@@ -419,21 +445,95 @@ export default function App() {
             Include sounds
           </label>
         </div>
-        <button type="button" className="cs-btn icon-btn">
+        <button
+          type="button"
+          className="cs-btn icon-btn"
+          onClick={playPreview}
+          disabled={sounds.length === 0}
+        >
           <SoundIcon />
           Preview
+        </button>
+
+        <button
+          type="button"
+          className="cs-btn icon-btn"
+          onClick={() => setShowHelp(true)}
+        >
+          <HelpIcon />
+          How to install
         </button>
 
         <span className="spacer" />
 
         <span className="export-note">
-          {knifeName.toLowerCase()} · {presetId === "custom" ? "custom" : presetId}
+          {knifeName.toLowerCase()} · {presetName.toLowerCase()}
+          <br />
+          {withSounds && sounds.length > 0
+            ? `zip with the model and ${sounds.length} sounds`
+            : "one file, v_knife.mdl"}
         </span>
-        <button type="button" className="cs-btn icon-btn primary" onClick={download} disabled={!model}>
+        <button
+          type="button"
+          className="cs-btn icon-btn primary"
+          onClick={() => void download()}
+          disabled={!model || exporting}
+        >
           <DownloadIcon />
-          Download v_knife.mdl
+          {exporting ? "Packing…" : "Download"}
         </button>
       </footer>
+
+      {showHelp && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setShowHelp(false);
+          }}
+        >
+          <div className="modal raised" role="dialog" aria-modal="true" aria-label="How to install">
+            <div className="modal-title">
+              <span>How to install</span>
+              <button type="button" className="cs-btn" onClick={() => setShowHelp(false)}>
+                Close
+              </button>
+            </div>
+
+            <ol className="steps">
+              <li>
+                Find your Counter-Strike folder. It usually looks like
+                <code>…\Steam\steamapps\common\Half-Life\cstrike</code>
+              </li>
+              <li>
+                Back up the knife you have now: rename
+                <code>cstrike\models_knife.mdl</code> to
+                <code>v_knife.mdl.backup</code>
+              </li>
+              <li>
+                {withSounds && sounds.length > 0
+                  ? "Copy the folders from the zip into cstrike and let them merge."
+                  : "Drop the downloaded v_knife.mdl into cstrike\models."}
+              </li>
+              <li>Start the game. That is it.</li>
+            </ol>
+
+            <p className="note">
+              Only the viewmodel changes, which is the knife in your own hands.
+              Everyone else still sees their own knife.
+            </p>
+            {sounds.length > 0 && (
+              <p className="note">
+                Sounds install into their own folder and never replace an original
+                Counter-Strike sound. Skip them and the knife still works, just quietly.
+              </p>
+            )}
+            <p className="note">
+              To undo: delete <code>v_knife.mdl</code> and rename your backup back.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

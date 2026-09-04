@@ -26,3 +26,4 @@ node_modules/
 
 # synced from models-source at build time
 public/models/
+public/sound/
