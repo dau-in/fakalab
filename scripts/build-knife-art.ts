@@ -19,7 +19,10 @@
  * which end is the tip.
  *
  * The result is written with the material index in the red channel rather than
- * a colour, so the app can paint it in whatever the current theme is.
+ * a colour, so the app can paint it in whatever the current theme is. Indices
+ * are spaced across the byte rather than counted from zero, because the browser
+ * reads them back through a canvas and a canvas may colour-manage what it is
+ * given; adjacent values would not survive that.
  *
  *   npm run knife-art
  */
@@ -44,6 +47,9 @@ const GRIP = 3;
 const GRIT = 4;
 const EDGE = 5;
 
+/** Spacing that keeps the indices apart once a canvas has been near them. */
+const MATERIAL_STEP = 51;
+
 const RENDER = 1280;
 const SIZE = 64;
 const PADDING = 3;
@@ -61,6 +67,9 @@ const LIGHTING = {
 
 const CANDIDATE_FRAMES = [0, 12, 24, 36, 48, 60, 75, 90, 110, 130];
 
+/** How close in size a second shape has to be before it counts as a twin. */
+const PAIR_SHARE = 0.6;
+
 function luminance(rgb: Uint8Array, slot: number): number {
   return rgb[slot * 3] * 0.299 + rgb[slot * 3 + 1] * 0.587 + rgb[slot * 3 + 2] * 0.114;
 }
@@ -70,6 +79,54 @@ function percentile(values: number[], fraction: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+}
+
+/**
+ * Blanks every drawn shape but the largest, and only when the second largest is
+ * nearly as big — a knife whose guard or pommel comes out as its own small
+ * shape keeps all of them, a pair of daggers keeps one.
+ */
+function keepLargestOfPair(material: Uint8Array): void {
+  const label = new Int32Array(material.length).fill(-1);
+  const sizes: number[] = [];
+  const stack: number[] = [];
+
+  for (let start = 0; start < material.length; start += 1) {
+    if (!material[start] || label[start] >= 0) continue;
+    const id = sizes.length;
+    let size = 0;
+    label[start] = id;
+    stack.push(start);
+
+    while (stack.length > 0) {
+      const slot = stack.pop() as number;
+      size += 1;
+      const x = slot % RENDER;
+      const y = (slot / RENDER) | 0;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= RENDER || ny >= RENDER) continue;
+          const next = ny * RENDER + nx;
+          if (material[next] && label[next] < 0) {
+            label[next] = id;
+            stack.push(next);
+          }
+        }
+      }
+    }
+    sizes.push(size);
+  }
+
+  if (sizes.length < 2) return;
+  const order = sizes.map((size, id) => ({ size, id })).sort((a, b) => b.size - a.size);
+  if (order[1].size < order[0].size * PAIR_SHARE) return;
+
+  const keep = order[0].id;
+  for (let slot = 0; slot < material.length; slot += 1) {
+    if (label[slot] >= 0 && label[slot] !== keep) material[slot] = NONE;
+  }
 }
 
 const models = join(process.cwd(), "public", "models");
@@ -129,8 +186,13 @@ for (const knife of KNIVES) {
     else handleLuma.push(value);
   }
 
-  const bladeMid = percentile(bladeLuma, 0.5);
-  const bladeHigh = percentile(bladeLuma, 0.94);
+  // The gut knife and the shadow daggers are one region throughout, so there
+  // is no grip to tell apart and every pixel is drawn as blade.
+  const splitByPart = bladeLuma.length > 0 && handleLuma.length > 0;
+  const allLuma = splitByPart ? bladeLuma : [...bladeLuma, ...handleLuma];
+
+  const bladeMid = percentile(allLuma, 0.5);
+  const bladeHigh = percentile(allLuma, 0.94);
   const handleMid = percentile(handleLuma, 0.55);
 
   const material = new Uint8Array(RENDER * RENDER);
@@ -138,13 +200,21 @@ for (const knife of KNIVES) {
     if (!best.coverage[slot]) continue;
     const value = luminance(best.rgb, slot);
 
-    if (best.region[slot] === REGION_HANDLE) {
+    // A knife with no blade/handle split of its own is drawn as all blade, so
+    // it still reads as a knife rather than a lump of grip.
+    if (splitByPart && best.region[slot] === REGION_HANDLE) {
       material[slot] = value > handleMid ? GRIT : GRIP;
     } else {
       // Only a sliver is the sharpened edge; the rest is face or bevel.
       material[slot] = value >= bladeHigh ? EDGE : value > bladeMid ? FACE : BEVEL;
     }
   }
+
+  // The shadow daggers are two knives, one in each hand, so the drawing would
+  // frame both and leave each of them a fifth the size of every other knife in
+  // the list. Where a model turns out to be a matched pair, only the larger
+  // half is drawn, and the set stays at one knife per row.
+  keepLargestOfPair(material);
 
   // The knife's own long axis, from the spread of its drawn pixels, so every
   // one of them can be turned to the same angle.
@@ -271,7 +341,7 @@ for (const knife of KNIVES) {
       const total = votes.reduce((sum, value) => sum + value, 0);
       if (count * 3 < total) winner = NONE;
 
-      out[(y * SIZE + x) * 3] = winner;
+      out[(y * SIZE + x) * 3] = winner * MATERIAL_STEP;
       seen.add(winner);
     }
   }

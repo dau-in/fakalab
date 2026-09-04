@@ -11,6 +11,13 @@ import { useEffect, useRef, useState } from "react";
 
 const MATERIALS = ["", "--art-face", "--art-bevel", "--art-grip", "--art-grit", "--art-edge"];
 
+/**
+ * Material indices are spaced across the byte in the file, since the canvas
+ * this is read through may colour-manage what it is given and adjacent values
+ * would not survive it.
+ */
+const MATERIAL_STEP = 51;
+
 export function artUrl(slug: string): string {
   return `${import.meta.env.BASE_URL}art/${slug}.png`;
 }
@@ -74,7 +81,7 @@ export function KnifeArt({ slug, size = 40, theme }: Props) {
     const palette = readPalette();
     const out = new Uint8ClampedArray(source.data.length);
     for (let i = 0; i < source.width * source.height; i += 1) {
-      const colour = palette[source.data[i * 4]];
+      const colour = palette[Math.round(source.data[i * 4] / MATERIAL_STEP)];
       if (!colour) continue;
       out[i * 4] = colour[0];
       out[i * 4 + 1] = colour[1];
