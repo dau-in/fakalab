@@ -7,75 +7,80 @@
  * modern light and dark palettes override them.
  */
 
-/* --- Dark, after Counter-Strike: Source ---------------------------------
+/* --- Dark, from Counter-Strike: Source ----------------------------------
  *
- * Cool slate panels with a warm amber accent, which is how the Source-era
- * menus read: everything structural is a desaturated blue-grey and the only
- * warmth in the interface is what it wants you to look at. Built from the
- * look rather than extracted hex, since that game is not installed here, so
- * these are values to tune rather than a reproduction.
+ * Taken from that game's own ClientScheme.res rather than from memory of it:
+ *
+ *   Orange       255 176 0     the accent, and nearly the only colour it uses
+ *   LightOrange  188 112 0     its dimmed counterpart
+ *   MenuColor    233 208 173   menu text, a warm parchment rather than white
+ *   TransparentBlack 0 0 0 196 which over a dark game is simply black
+ *
+ * The character of that interface is warm text on near-black, with the orange
+ * carrying every piece of emphasis. An earlier guess at this made it cool
+ * blue-grey, which was wrong in the way that matters: it had no warmth at all.
  */
 :root,
 :root[data-theme="dark"] {
-  --bg: #262c33;
-  --secondary-bg: #1a1f24;
+  --bg: #16150f;
+  --secondary-bg: #0a0a07;
 
-  --accent: #e0a33c;
-  --secondary-accent: #b07c26;
+  --accent: #ffb000;
+  --secondary-accent: #bc7000;
 
-  --text: #e2e8ee;
-  --secondary-text: #b9c2cb;
-  --text-3: #7f8a95;
+  --text: #e9d0ad;
+  --secondary-text: #c2ab8b;
+  --text-3: #8a7a63;
 
-  --border-light: #454f59;
-  --border-dark: #0e1216;
+  --border-light: #3a3327;
+  --border-dark: #000000;
 
-  --disabled-text: #5b656f;
+  --disabled-text: #5c5344;
   --disabled-text-shadow: transparent;
 
   --outline: #000;
-  --slider: #e0a33c;
-  --slider-bg: #12171b;
+  --slider: #ffb000;
+  --slider-bg: #060604;
 
-  --scrollbar-track: #2f363e;
+  --scrollbar-track: #201d15;
 
   /* Ours, for surfaces cs16.css does not name. */
-  --stage: #101418;
-  --button-text: #e8edf2;
+  --stage: #050504;
+  --button-text: #e9d0ad;
   color-scheme: dark;
 }
 
 /* --- Light, the same palette turned over -------------------------------
  *
- * The same cool grey and the same amber, so switching themes moves the
- * brightness and not the character. The accent darkens rather than changing
- * hue, which is what keeps it legible on a pale ground without clashing.
+ * The same parchment and the same orange, swapped: the warm tone becomes the
+ * ground and the orange darkens far enough to stay legible on it. Switching
+ * themes moves the brightness, not the character.
  */
 :root[data-theme="light"] {
-  --bg: #e4e7ea;
-  --secondary-bg: #f4f6f8;
+  --bg: #e7e0d1;
+  --secondary-bg: #f6f1e6;
 
-  --accent: #9a6a12;
-  --secondary-accent: #7a5310;
+  --accent: #a86f00;
+  --secondary-accent: #7d5200;
 
-  --text: #1b2026;
-  --secondary-text: #39424b;
-  --text-3: #6b757f;
+  --text: #241f16;
+  --secondary-text: #453d2e;
+  --text-3: #766c58;
 
   --border-light: #ffffff;
-  --border-dark: #a8b0b8;
+  --border-dark: #b3aa97;
 
-  --disabled-text: #a8b0b8;
+  --disabled-text: #b3aa97;
   --disabled-text-shadow: #fff;
 
-  --outline: #4d5760;
-  --slider: #9a6a12;
-  --slider-bg: #cdd3d9;
+  --outline: #5a5140;
+  --slider: #a86f00;
+  --slider-bg: #cec5b1;
 
-  --scrollbar-track: #d7dce1;
+  --scrollbar-track: #d9d1c0;
 
-  --stage: #141a1f;
-  --button-text: #1b2026;
+  --stage: #14120e;
+  --button-text: #241f16;
   color-scheme: light;
 }
 
@@ -713,3 +718,48 @@ body {
   font-size: 0.75rem;
   padding: 3px 2px 2px;
 }
+
+/* --- Icon-only controls ------------------------------------------------- */
+.cs-btn.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 6px 4px;
+  line-height: 0;
+  text-decoration: none;
+}
+
+/* --- Drawn knife artwork ------------------------------------------------
+ *
+ * Its own variables rather than the interface's, because the interface's
+ * darkest border is pure black in the dark theme and a black grip on a
+ * near-black row would vanish. Same five materials in every theme.
+ */
+:root,
+:root[data-theme="dark"] {
+  --art-face: #d8a63f;
+  --art-bevel: #9c7526;
+  --art-grip: #2e2b22;
+  --art-grit: #7c7565;
+  --art-edge: #f3e6cd;
+}
+:root[data-theme="light"] {
+  --art-face: #b07d1c;
+  --art-bevel: #7d5610;
+  --art-grip: #3b3527;
+  --art-grit: #8c8471;
+  --art-edge: #ffffff;
+}
+:root[data-theme="cs16"] {
+  --art-face: #c4b550;
+  --art-bevel: #958831;
+  --art-grip: #292c21;
+  --art-grit: #8c9284;
+  --art-edge: #ffffff;
+}
+
+.ka-face { fill: var(--art-face); }
+.ka-bevel { fill: var(--art-bevel); }
+.ka-grip { fill: var(--art-grip); }
+.ka-grit { fill: var(--art-grit); }
+.ka-edge { fill: var(--art-edge); }

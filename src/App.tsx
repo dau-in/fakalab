@@ -11,6 +11,8 @@ import { parseMdl, soundEvents, type MdlFile } from "./mdl/parse";
 import { PATTERNS } from "./mdl/patterns";
 import { loadRegionMask, REGION_HANDLE, REGIONS, type RegionMask } from "./mdl/regions";
 import { FinishEditor } from "./ui/FinishEditor";
+import { KnifeArt } from "./ui/KnifeArt";
+import { hasArt } from "./ui/knife-art";
 import { TextureView } from "./ui/TextureView";
 import { ORIGINAL_FINISH, type Finish } from "./mdl/finish";
 import type { FinishLook } from "./mdl/recolor";
@@ -27,6 +29,7 @@ import {
   PaletteIcon,
   PauseIcon,
   PlayIcon,
+  RepoIcon,
   SceneIcon,
   SoundIcon,
   SunIcon,
@@ -36,7 +39,7 @@ import { useTheme, type Theme } from "./ui/useTheme";
 const THEME_BUTTONS: Array<{ id: Theme; label: string; Icon: typeof SunIcon }> = [
   { id: "light", label: "Light", Icon: SunIcon },
   { id: "dark", label: "Dark", Icon: MoonIcon },
-  { id: "cs16", label: "CS 1.6", Icon: CrosshairIcon },
+  { id: "cs16", label: "Default", Icon: CrosshairIcon },
 ];
 
 type Tab = "knife" | "scene";
@@ -229,50 +232,63 @@ export default function App() {
         <span className="spacer" />
 
         <div className="group">
-          <span className="group-label">Theme</span>
           {THEME_BUTTONS.map(({ id, label, Icon }) => (
             <button
               key={id}
               type="button"
-              className="cs-btn icon-btn"
+              className="cs-btn icon-only"
               aria-pressed={theme === id}
+              aria-label={`${label} theme`}
+              title={`${label} theme`}
               onClick={() => setTheme(id)}
             >
               <Icon />
-              {label}
             </button>
           ))}
         </div>
 
         <div className="group">
-          <span className="group-label">View</span>
           <button
             type="button"
-            className="cs-btn icon-btn"
+            className="cs-btn icon-only"
             aria-pressed={!free}
+            aria-label="In-game view"
+            title="In-game view, framed the way the engine draws it"
             onClick={() => setFree(false)}
           >
             <EyeIcon />
-            In game
           </button>
           <button
             type="button"
-            className="cs-btn icon-btn"
+            className="cs-btn icon-only"
             aria-pressed={free}
+            aria-label="Free view"
+            title="Free view, orbit around the knife"
             onClick={() => setFree(true)}
           >
             <OrbitIcon />
-            Free
           </button>
           <button
             type="button"
-            className="cs-btn icon-btn"
+            className="cs-btn icon-only"
+            aria-label={playing ? "Pause the animation" : "Play the animation"}
+            title={playing ? "Pause the animation" : "Play the animation"}
             onClick={() => setPlaying((value) => !value)}
           >
             {playing ? <PauseIcon /> : <PlayIcon />}
-            {playing ? "Pause" : "Play"}
           </button>
         </div>
+
+        <a
+          className="cs-btn icon-only"
+          href="https://github.com/dau-in/fakalab"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Source on GitHub"
+          title="Source on GitHub"
+        >
+          <RepoIcon />
+        </a>
       </header>
 
       <div className="body">
@@ -289,14 +305,18 @@ export default function App() {
               aria-pressed={knife.slug === slug}
               onClick={() => setSlug(knife.slug)}
             >
-              <img
-                className="knife-thumb"
-                src={thumbnailUrl(knife.slug)}
-                width={40}
-                height={40}
-                alt=""
-                loading="lazy"
-              />
+              {hasArt(knife.slug) ? (
+                <KnifeArt slug={knife.slug} />
+              ) : (
+                <img
+                  className="knife-thumb"
+                  src={thumbnailUrl(knife.slug)}
+                  width={40}
+                  height={40}
+                  alt=""
+                  loading="lazy"
+                />
+              )}
               <span>{knife.name}</span>
             </button>
           ))}

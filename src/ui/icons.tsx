@@ -149,3 +149,13 @@ export function HelpIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** Angle brackets: the repository, at a size where a logo would turn to mud. */
+export function RepoIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 4h2v1H5zM3 5h2v1H3zM1 6h2v4H1zM3 10h2v1H3zM5 11h2v1H5z" />
+      <path d="M9 4h2v1H9zM11 5h2v1h-2zM13 6h2v4h-2zM11 10h2v1h-2zM9 11h2v1H9z" />
+    </Svg>
+  );
+}
