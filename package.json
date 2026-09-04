@@ -1,7 +1,7 @@
 {
   "name": "fakalab",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-beta.1",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -16,7 +16,8 @@
     "regions": "esbuild scripts/build-regions.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/regions.mjs --log-level=warning && node node_modules/.tmp/regions.mjs",
     "verify:recolor": "esbuild scripts/verify-recolor.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/verify-recolor.mjs --log-level=warning && node node_modules/.tmp/verify-recolor.mjs",
     "verify:export": "esbuild scripts/verify-export.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/verify-export.mjs --log-level=warning && node node_modules/.tmp/verify-export.mjs",
-    "verify": "npm run verify:recolor && npm run verify:export"
+    "verify": "npm run verify:recolor && npm run verify:export",
+    "backdrops": "esbuild scripts/build-backdrops.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/backdrops.mjs --log-level=warning && node node_modules/.tmp/backdrops.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",

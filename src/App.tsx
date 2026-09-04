@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import logo from "./assets/karambit.svg";
+import { BACKDROPS, backdropUrl, DEFAULT_BACKDROP } from "./data/backdrops";
 import { KNIVES, modelUrl, thumbnailUrl } from "./data/knives";
 import { DEFAULT_PRESET, finishesOf, PRESETS, type Preset } from "./data/presets";
 import { fetchSound, previewSound, soundUrl } from "./data/sounds";
@@ -66,6 +67,7 @@ export default function App() {
   const [patternId, setPatternId] = useState(DEFAULT_PRESET.patternId);
   const [patternStrength, setPatternStrength] = useState(DEFAULT_PRESET.patternStrength);
   const [mask, setMask] = useState<RegionMask | null>(null);
+  const [backdrop, setBackdrop] = useState(DEFAULT_BACKDROP);
 
   const [free, setFree] = useState(false);
   const [playing, setPlaying] = useState(true);
@@ -218,6 +220,9 @@ export default function App() {
         <span className="wordmark">
           <img src={logo} width={22} height={22} alt="" />
           Faka<b>Lab</b>
+          <em className="beta" title="Early build. Things still move around.">
+            beta
+          </em>
         </span>
 
         <span className="spacer" />
@@ -297,7 +302,14 @@ export default function App() {
         </nav>
 
         <main className="stage">
-          <div className="viewport">
+          <div
+            className="viewport"
+            style={
+              backdropUrl(backdrop)
+                ? { backgroundImage: `url(${backdropUrl(backdrop)})` }
+                : undefined
+            }
+          >
             <Viewport
               model={model}
               recolored={recolored}
@@ -493,6 +505,27 @@ export default function App() {
                     />
                   </div>
                 </div>
+              </section>
+
+              <section className="section">
+                <h2>Backdrop</h2>
+                <div className="patterns">
+                  {BACKDROPS.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="cs-btn"
+                      aria-pressed={backdrop === entry.id}
+                      onClick={() => setBackdrop(entry.id)}
+                    >
+                      {entry.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="note" style={{ marginTop: 8 }}>
+                  Counter-Strike's own skies, softened so they sit behind the
+                  knife instead of competing with it.
+                </p>
               </section>
 
               <section className="section">

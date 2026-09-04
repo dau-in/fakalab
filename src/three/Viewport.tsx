@@ -173,7 +173,8 @@ export function Viewport({ model, recolored, lighting = DEFAULT_LIGHTING, free =
     <Canvas
       // The eye sits at the origin, which is where GoldSrc draws viewmodels from.
       camera={{ position: [0, 0, 0], fov: 90, near: 0.5, far: 400 }}
-      gl={{ antialias: true }}
+      // Transparent, so the backdrop behind the canvas shows through.
+      gl={{ antialias: true, alpha: true }}
       dpr={[1, 2]}
     >
       <CameraRig free={free} />

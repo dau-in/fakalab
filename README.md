@@ -2,6 +2,12 @@
 
 # FakaLab
 
+> **Beta.** This is an early public build. The knife library, the export and the
+> 3D preview all work, but the customization tools are still being reshaped and
+> what a preset does today may not be what it does next week. Nothing it exports
+> can damage your game: the original file is never modified, and installing is a
+> matter of copying one file you can delete again.
+
 Customize Counter-Strike 1.6 knife viewmodels in your browser. Pick a knife, apply a preset or
 your own colors in a live 3D preview, and download a ready-to-use `v_knife.mdl`.
 

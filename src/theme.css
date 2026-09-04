@@ -629,3 +629,25 @@ body {
 .swatches .stop input {
   height: 30px;
 }
+
+/* --- Viewport backdrop -------------------------------------------------- */
+.viewport {
+  background-color: var(--stage);
+  background-position: center 42%;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+/* --- Beta mark ---------------------------------------------------------- */
+.beta {
+  margin-left: 2px;
+  padding: 1px 5px;
+  font-size: 0.75rem;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--border-dark);
+  background: var(--secondary-bg);
+  align-self: center;
+}
